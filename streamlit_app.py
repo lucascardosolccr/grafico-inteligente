@@ -50,7 +50,7 @@ class InsightEngine:
 class AnomalyDetector:
     @staticmethod
     def find_anomalies(df, features):
-        data = df.select(features).to_pandas().fillna(0)
+        data = df.select(features).to_pandas().fillna(0).select_dtypes(include=[np.number])
         model = IsolationForest(contamination=0.05, random_state=42)
         return model.fit_predict(data)
 
@@ -103,7 +103,6 @@ class GraphEngine:
         
         pdf = df.to_pandas()
         
-        # Correção: Validação de colunas para evitar IndexError
         if len(df.columns) < 2:
             return px.histogram(pdf, x=df.columns[0], title=f"Distribuição de {df.columns[0]}")
             
@@ -138,12 +137,15 @@ class UITheme:
         """, unsafe_allow_html=True)
 
 # ==========================================
-# MOTOR DE ML
+# MOTOR DE ML (DEFENSIVO)
 # ==========================================
 class MLProcessor:
     @staticmethod
     def run_kmeans(df, features, n_clusters):
-        data = df.select(features).to_pandas().dropna()
+        # Conversão robusta para pandas e filtro estrito de numéricos
+        data = df.select(features).to_pandas().select_dtypes(include=[np.number]).dropna()
+        if data.empty: return None
+        
         scaler = StandardScaler()
         scaled_data = scaler.fit_transform(data)
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
@@ -164,7 +166,7 @@ class DataVizApp:
         self.theme.apply_custom_css()
         
         with st.sidebar:
-            st.title("📂 DataViz Pro V1.5")
+            st.title("📂 DataViz Pro V1.6")
             uploaded_file = st.file_uploader("Carregar dataset", type=["csv", "xlsx", "json", "parquet"])
         
         st.title("📊 Painel de Análise Profissional")
@@ -204,9 +206,12 @@ class DataVizApp:
                         k = st.slider("Clusters", 2, 6, 3)
                         if st.button("Executar Clusterização"):
                             clusters = self.ml.run_kmeans(df, sel, k)
-                            pdf = df.to_pandas()
-                            pdf['Cluster'] = clusters
-                            st.scatter_chart(pdf, x=sel[0], y=sel[1], color='Cluster')
+                            if clusters is not None:
+                                pdf = df.to_pandas()
+                                pdf['Cluster'] = clusters
+                                st.scatter_chart(pdf, x=sel[0], y=sel[1], color='Cluster')
+                            else:
+                                st.error("Não foi possível processar a clusterização (verifique se os dados são numéricos).")
                 
                 with tabs[3]: # ANOMALIAS
                     st.subheader("Detecção de Anomalias (Isolation Forest)")
