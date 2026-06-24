@@ -107,12 +107,15 @@ class GraphEngine:
     @staticmethod
     def create_plot(df, plot_type, x, y, color=None):
         pdf = df.to_pandas()
+        # Validação defensiva para hierarquias
+        val_y = y if pd.api.types.is_numeric_dtype(pdf[y]) else None
+        
         if plot_type == "Linha": return px.line(pdf, x=x, y=y)
         elif plot_type == "Barras": return px.bar(pdf, x=x, y=y, color=color)
         elif plot_type == "Dispersão": return px.scatter(pdf, x=x, y=y, color=color)
         elif plot_type == "Histograma": return px.histogram(pdf, x=x)
-        elif plot_type == "Treemap": return px.treemap(pdf, path=[x], values=y)
-        elif plot_type == "Sunburst": return px.sunburst(pdf, path=[x], values=y)
+        elif plot_type == "Treemap": return px.treemap(pdf, path=[x], values=val_y)
+        elif plot_type == "Sunburst": return px.sunburst(pdf, path=[x], values=val_y)
         return px.bar(pdf, x=x, y=y)
 
     @staticmethod
@@ -178,7 +181,7 @@ class DataVizApp:
     def run(self):
         self.theme.apply_custom_css()
         with st.sidebar:
-            st.title("📂 DataViz Pro V1.9")
+            st.title("📂 DataViz Pro V2.0")
             uploaded_file = st.file_uploader("Carregar dataset", type=["csv", "xlsx", "json", "parquet"])
         
         st.title("📊 Painel de Análise Profissional")
