@@ -178,7 +178,7 @@ class DataVizApp:
     def run(self):
         self.theme.apply_custom_css()
         with st.sidebar:
-            st.title("📂 DataViz Pro V1.8")
+            st.title("📂 DataViz Pro V1.9")
             uploaded_file = st.file_uploader("Carregar dataset", type=["csv", "xlsx", "json", "parquet"])
         
         st.title("📊 Painel de Análise Profissional")
@@ -197,52 +197,52 @@ class DataVizApp:
                         cols_ui = st.columns(min(len(cols), 4))
                         for i, m in enumerate(cols[:4]):
                             with cols_ui[i]: self.theme.render_kpi(m, f"{df[m].sum():,.0f}")
-                    st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True)
+                    st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True, key="dash_chart")
 
-                with tabs[1]: # EXPLORATÓRIA MANUAL
+                with tabs[1]: # EXPLORATÓRIA
                     st.subheader("Configuração Manual de Gráficos")
                     c1, c2 = st.columns(2)
-                    x = c1.selectbox("Eixo X (Manual)", list(df.columns))
-                    y = c2.selectbox("Eixo Y (Manual)", list(df.columns))
-                    st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True)
+                    x = c1.selectbox("Eixo X (Manual)", list(df.columns), key="expl_x")
+                    y = c2.selectbox("Eixo Y (Manual)", list(df.columns), key="expl_y")
+                    st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True, key="expl_chart")
 
                 with tabs[2]: # ESTÚDIO VISUAL
                     st.subheader("Estúdio de Visualização")
                     c1, c2, c3 = st.columns([1, 3, 1])
                     with c1:
-                        gx = st.selectbox("Eixo X (Estúdio)", list(df.columns))
-                        gy = st.selectbox("Eixo Y (Estúdio)", list(df.columns))
-                        gtype = st.selectbox("Tipo de Gráfico", ["Barras", "Linha", "Dispersão", "Histograma", "Treemap", "Sunburst"])
-                    with c2: st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy), use_container_width=True)
+                        gx = st.selectbox("Eixo X (Estúdio)", list(df.columns), key="studio_x")
+                        gy = st.selectbox("Eixo Y (Estúdio)", list(df.columns), key="studio_y")
+                        gtype = st.selectbox("Tipo de Gráfico", ["Barras", "Linha", "Dispersão", "Histograma", "Treemap", "Sunburst"], key="studio_type")
+                    with c2: st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy), use_container_width=True, key="studio_chart")
 
                 with tabs[3]: # TRANSFORMAÇÃO
                     st.subheader("Engenharia de Dados")
-                    if st.button("Remover Duplicados"): df = self.transformer.remove_duplicates(df)
-                    if st.button("Preencher Nulos"): df = self.transformer.fill_nulls(df)
+                    if st.button("Remover Duplicados", key="dup_btn"): df = self.transformer.remove_duplicates(df)
+                    if st.button("Preencher Nulos", key="null_btn"): df = self.transformer.fill_nulls(df)
                     st.dataframe(df.to_pandas().head())
 
                 with tabs[4]: # ML CLUSTER
                     num_cols = [c for c, t in schema.items() if t == "Métrica"]
-                    sel = st.multiselect("Features", num_cols, default=num_cols[:2])
-                    k = st.slider("Clusters", 2, 6, 3)
-                    if st.button("Executar Clusterização"):
+                    sel = st.multiselect("Features", num_cols, default=num_cols[:2], key="ml_sel")
+                    k = st.slider("Clusters", 2, 6, 3, key="ml_k")
+                    if st.button("Executar Clusterização", key="ml_btn"):
                         res = self.ml.run_kmeans(df, sel, k)
                         if res is not None: st.write("Clusterização finalizada.")
 
                 with tabs[5]: # ANOMALIAS
                     st.subheader("Detecção de Anomalias")
                     num_cols = [c for c, t in schema.items() if t == "Métrica"]
-                    sel = st.multiselect("Features Anomalia", num_cols, default=num_cols[:2])
-                    if st.button("Rodar Detecção"):
+                    sel = st.multiselect("Features Anomalia", num_cols, default=num_cols[:2], key="ano_sel")
+                    if st.button("Rodar Detecção", key="ano_btn"):
                         preds = AnomalyDetector.find_anomalies(df, sel)
                         pdf = df.to_pandas()
                         pdf['Status'] = ["Anômalo" if p == -1 else "Normal" for p in preds]
                         st.dataframe(pdf[pdf['Status'] == "Anômalo"])
 
                 with tabs[6]: # ASSISTENTE IA
-                    query = st.text_input("Consulta SQL:")
+                    query = st.text_input("Consulta SQL:", key="sql_input")
                     if query: st.dataframe(self.engine.query(query))
-                    if prompt := st.chat_input("Pergunte algo..."):
+                    if prompt := st.chat_input("Pergunte algo...", key="ai_chat"):
                         st.chat_message("user").markdown(prompt)
                         st.chat_message("assistant").markdown("Motor de IA ativo.")
         else:
