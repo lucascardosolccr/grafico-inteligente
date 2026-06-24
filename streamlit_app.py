@@ -14,7 +14,7 @@ import numpy as np
 st.set_page_config(page_title="DataViz Pro Engine", layout="wide", initial_sidebar_state="expanded")
 
 # ==========================================
-# MOTOR DE PERFILAMENTO SEMÂNTICO (RESTAURADO)
+# MOTOR DE PERFILAMENTO SEMÂNTICO
 # ==========================================
 class DataProfiler:
     @staticmethod
@@ -102,9 +102,15 @@ class GraphEngine:
         dates = [c for c, t in schema.items() if t == "Temporal"]
         
         pdf = df.to_pandas()
+        
+        # Correção: Validação de colunas para evitar IndexError
+        if len(df.columns) < 2:
+            return px.histogram(pdf, x=df.columns[0], title=f"Distribuição de {df.columns[0]}")
+            
         if dates and metrics: return px.line(pdf, x=dates[0], y=metrics[0], title=f"Tendência de {metrics[0]}")
         if cats and metrics: return px.bar(pdf, x=cats[0], y=metrics[0], title=f"{metrics[0]} por {cats[0]}")
         if len(metrics) >= 2: return px.scatter(pdf, x=metrics[0], y=metrics[1], title=f"Correlação {metrics[0]} vs {metrics[1]}")
+        
         return px.bar(pdf, x=df.columns[0], y=df.columns[1])
 
 # ==========================================
@@ -158,7 +164,7 @@ class DataVizApp:
         self.theme.apply_custom_css()
         
         with st.sidebar:
-            st.title("📂 DataViz Pro V1.4")
+            st.title("📂 DataViz Pro V1.5")
             uploaded_file = st.file_uploader("Carregar dataset", type=["csv", "xlsx", "json", "parquet"])
         
         st.title("📊 Painel de Análise Profissional")
