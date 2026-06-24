@@ -20,11 +20,8 @@ class DataProfiler:
     @staticmethod
     def identify_type(col_name, series):
         col_name = col_name.lower()
-        # Geográfico
         if any(x in col_name for x in ['cep', 'uf', 'estado', 'cidade', 'lat', 'long', 'pais']): return "Geográfico"
-        # Temporal
         if any(x in col_name for x in ['data', 'ano', 'mes', 'dia', 'time']): return "Temporal"
-        # Identificadores
         if any(x in col_name for x in ['id', 'cpf', 'cnpj', 'codigo']): return "Identificador"
         
         dtype = series.dtype
@@ -33,7 +30,7 @@ class DataProfiler:
         return "Texto"
 
 # ==========================================
-# MOTOR DE INSIGHTS (NOVA MELHORIA)
+# MOTOR DE INSIGHTS
 # ==========================================
 class InsightEngine:
     @staticmethod
@@ -48,7 +45,7 @@ class InsightEngine:
         return " | ".join(insights)
 
 # ==========================================
-# MOTOR DE ANOMALIAS (NOVA MELHORIA)
+# MOTOR DE ANOMALIAS
 # ==========================================
 class AnomalyDetector:
     @staticmethod
@@ -58,7 +55,7 @@ class AnomalyDetector:
         return model.fit_predict(data)
 
 # ==========================================
-# MOTOR DE DADOS (DUCKDB + POLARS INTEGRADOS)
+# MOTOR DE DADOS (DUCKDB + POLARS)
 # ==========================================
 class DataEngine:
     def __init__(self):
@@ -74,7 +71,6 @@ class DataEngine:
             elif ext == 'json': df = pl.read_json(file_content)
             else: return None
             
-            # Registrar para DuckDB
             _self.con.register('df_view', df.to_pandas())
             return df
         except Exception as e:
@@ -88,7 +84,7 @@ class DataEngine:
         return {col: DataProfiler.identify_type(col, df[col]) for col in df.columns}
 
 # ==========================================
-# MOTOR DE VISUALIZAÇÃO (RESTAURADO)
+# MOTOR DE VISUALIZAÇÃO
 # ==========================================
 class GraphEngine:
     @staticmethod
@@ -136,7 +132,7 @@ class UITheme:
         """, unsafe_allow_html=True)
 
 # ==========================================
-# MOTOR DE MACHINE LEARNING (CLUSTERIZAÇÃO)
+# MOTOR DE ML
 # ==========================================
 class MLProcessor:
     @staticmethod
@@ -148,7 +144,7 @@ class MLProcessor:
         return kmeans.fit_predict(scaled_data)
 
 # ==========================================
-# APLICAÇÃO PRINCIPAL (CONSOLIDADA)
+# APLICAÇÃO PRINCIPAL
 # ==========================================
 class DataVizApp:
     def __init__(self):
@@ -162,7 +158,7 @@ class DataVizApp:
         self.theme.apply_custom_css()
         
         with st.sidebar:
-            st.title("📂 DataViz Pro V1.3")
+            st.title("📂 DataViz Pro V1.4")
             uploaded_file = st.file_uploader("Carregar dataset", type=["csv", "xlsx", "json", "parquet"])
         
         st.title("📊 Painel de Análise Profissional")
