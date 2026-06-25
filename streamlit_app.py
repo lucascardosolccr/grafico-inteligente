@@ -252,6 +252,9 @@ class UITheme:
             .kpi-card { background: white; padding: 15px; border-radius: 10px; border-left: 5px solid #007bff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center; }
             .kpi-value { font-size: 20px; font-weight: bold; color: #2c3e50; }
             .kpi-label { font-size: 12px; color: #7f8c8d; text-transform: uppercase; }
+            
+            /* Melhoria visual para o Radio imitar as Tabs originais */
+            div[role="radiogroup"] { padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -289,14 +292,15 @@ class DataVizApp:
             if df is not None:
                 schema = self.engine.get_semantic_schema(df)
                 
-                # Novas abas incorporadas (Volume 01)
-                tabs = st.tabs([
+                # CORREÇÃO CIRÚRGICA (Versão 1.8): Substituição de st.tabs por st.radio para isolamento de DOM
+                abas_lista = [
                     "Dashboard", "Exploratória", "Estúdio Visual", "Transformação", 
                     "Clusterização", "Anomalias", "Assistente IA", 
                     "Smart Profiling", "PyGWalker", "Canvas Visual"
-                ])
+                ]
+                aba_ativa = st.radio("Navegação do Painel:", abas_lista, horizontal=True, label_visibility="collapsed")
                 
-                with tabs[0]: # DASHBOARD
+                if aba_ativa == "Dashboard":
                     st.subheader("Dashboard Executivo")
                     st.metric("Qualidade dos Dados", f"{DataProfiler.calculate_quality_score(df)}/100")
                     st.info(self.insight.generate_summary(df))
@@ -307,14 +311,14 @@ class DataVizApp:
                             with cols_ui[i]: self.theme.render_kpi(m, f"{df[m].sum():,.0f}")
                     st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True, key="dash_chart")
 
-                with tabs[1]: # EXPLORATÓRIA
+                elif aba_ativa == "Exploratória":
                     st.subheader("Configuração Manual de Gráficos")
                     c1, c2 = st.columns(2)
                     x = c1.selectbox("Eixo X (Manual)", list(df.columns), key="expl_x")
                     y = c2.selectbox("Eixo Y (Manual)", list(df.columns), key="expl_y")
                     st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True, key="expl_chart")
 
-                with tabs[2]: # ESTÚDIO VISUAL (EXPANDIDO)
+                elif aba_ativa == "Estúdio Visual":
                     st.subheader("Estúdio de Visualização Avançado")
                     c1, c2, c3 = st.columns([1, 3, 1])
                     with c1:
@@ -341,13 +345,13 @@ class DataVizApp:
                         else:
                             st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy), use_container_width=True, key="studio_chart")
 
-                with tabs[3]: # TRANSFORMAÇÃO
+                elif aba_ativa == "Transformação":
                     st.subheader("Engenharia de Dados")
                     if st.button("Remover Duplicados", key="dup_btn"): df = self.transformer.remove_duplicates(df)
                     if st.button("Preencher Nulos", key="null_btn"): df = self.transformer.fill_nulls(df)
                     st.dataframe(df.to_pandas().head())
 
-                with tabs[4]: # ML CLUSTER
+                elif aba_ativa == "Clusterização":
                     num_cols = [c for c, t in schema.items() if t == "Métrica"]
                     sel = st.multiselect("Features", num_cols, default=num_cols[:2], key="ml_sel")
                     k = st.slider("Clusters", 2, 6, 3, key="ml_k")
@@ -355,7 +359,7 @@ class DataVizApp:
                         res = self.ml.run_kmeans(df, sel, k)
                         if res is not None: st.write("Clusterização finalizada.")
 
-                with tabs[5]: # ANOMALIAS
+                elif aba_ativa == "Anomalias":
                     st.subheader("Detecção de Anomalias")
                     num_cols = [c for c, t in schema.items() if t == "Métrica"]
                     sel = st.multiselect("Features Anomalia", num_cols, default=num_cols[:2], key="ano_sel")
@@ -365,18 +369,14 @@ class DataVizApp:
                         pdf['Status'] = ["Anômalo" if p == -1 else "Normal" for p in preds]
                         st.dataframe(pdf[pdf['Status'] == "Anômalo"])
 
-                with tabs[6]: # ASSISTENTE IA
+                elif aba_ativa == "Assistente IA":
                     query = st.text_input("Consulta SQL:", key="sql_input")
                     if query: st.dataframe(self.engine.query(query))
                     if prompt := st.chat_input("Pergunte algo...", key="ai_chat"):
                         st.chat_message("user").markdown(prompt)
                         st.chat_message("assistant").markdown("Motor de IA ativo.")
 
-                # ==========================================
-                # NOVAS ABAS DA IMPLEMENTAÇÃO - VOLUME 01
-                # ==========================================
-                
-                with tabs[7]: # SMART PROFILING
+                elif aba_ativa == "Smart Profiling":
                     st.subheader("Motor Inteligente: Profiling Automático")
                     if st.button("Gerar Perfil Completo (YData/SweetViz)"):
                         if ydata_profiling is not None and st_profile_report is not None:
@@ -387,18 +387,16 @@ class DataVizApp:
                         else:
                             st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Adicione ao requirements.txt.")
                             
-                with tabs[8]: # PYGWALKER
+                elif aba_ativa == "PyGWalker":
                     st.subheader("Tableau-like Experience (PyGWalker)")
                     st.write("Arraste colunas, medidas e dimensões para criar gráficos.")
                     if pyg is not None:
-                        # CORREÇÃO CIRÚRGICA: Lazy load para evitar conflito de DOM (removeChild) no Streamlit (Versão 1.7)
-                        if st.checkbox("Ativar Explorador PyGWalker", key="chk_pyg"):
-                            pdf = df.to_pandas()
-                            pyg.walk(pdf, env='Streamlit')
+                        pdf = df.to_pandas()
+                        pyg.walk(pdf, env='Streamlit')
                     else:
                         st.error("A biblioteca 'pygwalker' não está instalada no ambiente. Adicione ao requirements.txt.")
 
-                with tabs[9]: # CANVAS VISUAL
+                elif aba_ativa == "Canvas Visual":
                     st.subheader("🎨 Canvas de Construção Visual")
                     col_prop, col_canvas = st.columns([1, 4])
                     
@@ -416,12 +414,10 @@ class DataVizApp:
                     with col_canvas:
                         st.write("Área de Arrastar e Soltar (Dashboard Elements)")
                         if elements is not None:
-                            # CORREÇÃO CIRÚRGICA: Lazy load para evitar conflito de DOM (removeChild) no Streamlit (Versão 1.7)
-                            if st.checkbox("Ativar Canvas Visual", key="chk_canvas"):
-                                with elements("dashboard_canvas"):
-                                    layout = [dashboard.Item("item1", 0, 0, 12, 6)]
-                                    with dashboard.Grid(layout):
-                                        mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
+                            with elements("dashboard_canvas"):
+                                layout = [dashboard.Item("item1", 0, 0, 12, 6)]
+                                with dashboard.Grid(layout):
+                                    mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
                         else:
                             st.error("O pacote 'streamlit-elements' não está instalado no ambiente. Adicione ao requirements.txt.")
         else:
