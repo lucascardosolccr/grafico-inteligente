@@ -27,12 +27,37 @@ except ImportError:
     ydata_profiling = None
     st_profile_report = None
 
-import sweetviz as sv
-from autoviz.AutoViz_Class import AutoViz_Class
-from streamlit_echarts import st_echarts
-import altair as alt
-import pygwalker as pyg
-from streamlit_elements import elements, mui, html, dashboard
+# CORREÇÃO CIRÚRGICA: Tratamento de ausência de pacotes visuais no Streamlit Cloud (Versão 1.4)
+try:
+    import sweetviz as sv
+except ImportError:
+    sv = None
+
+try:
+    from autoviz.AutoViz_Class import AutoViz_Class
+except ImportError:
+    AutoViz_Class = None
+
+try:
+    from streamlit_echarts import st_echarts
+except ImportError:
+    st_echarts = None
+
+try:
+    import altair as alt
+except ImportError:
+    alt = None
+
+try:
+    import pygwalker as pyg
+except ImportError:
+    pyg = None
+
+try:
+    from streamlit_elements import elements, mui, html, dashboard
+except ImportError:
+    elements = mui = html = dashboard = None
+
 
 # ==========================================
 # CONFIGURAÇÃO GLOBAL
@@ -163,7 +188,9 @@ class GraphEngine:
     @staticmethod
     def create_altair_plot(df, x, y):
         pdf = df.to_pandas()
-        return alt.Chart(pdf).mark_circle(size=60).encode(x=x, y=y, tooltip=[x, y]).interactive()
+        if alt is not None:
+            return alt.Chart(pdf).mark_circle(size=60).encode(x=x, y=y, tooltip=[x, y]).interactive()
+        return None
 
     @staticmethod
     def get_echarts_options(x_data, y_data):
@@ -294,10 +321,16 @@ class DataVizApp:
                     
                     with c2: 
                         if gtype == "Altair":
-                            st.altair_chart(self.viz.create_altair_plot(df, gx, gy), use_container_width=True)
+                            if alt is not None:
+                                st.altair_chart(self.viz.create_altair_plot(df, gx, gy), use_container_width=True)
+                            else:
+                                st.warning("A biblioteca 'altair' não está instalada.")
                         elif gtype == "ECharts":
-                            pdf = df.to_pandas()
-                            st_echarts(options=self.viz.get_echarts_options(pdf[gx].tolist()[:50], pdf[gy].tolist()[:50]), height="400px")
+                            if st_echarts is not None:
+                                pdf = df.to_pandas()
+                                st_echarts(options=self.viz.get_echarts_options(pdf[gx].tolist()[:50], pdf[gy].tolist()[:50]), height="400px")
+                            else:
+                                st.warning("A biblioteca 'streamlit_echarts' não está instalada.")
                         else:
                             st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy), use_container_width=True, key="studio_chart")
 
@@ -345,13 +378,18 @@ class DataVizApp:
                                 pr = pdf.profile_report()
                                 st_profile_report(pr)
                         else:
-                            st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Por favor, adicione-a ao seu arquivo requirements.txt.")
+                            st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Adicione ao requirements.txt.")
+                            
+                        # Aqui integraria o SweetViz no futuro, validando se 'sv is not None'
 
                 with tabs[8]: # PYGWALKER
                     st.subheader("Tableau-like Experience (PyGWalker)")
                     st.write("Arraste colunas, medidas e dimensões para criar gráficos.")
-                    pdf = df.to_pandas()
-                    pyg.walk(pdf, env='Streamlit')
+                    if pyg is not None:
+                        pdf = df.to_pandas()
+                        pyg.walk(pdf, env='Streamlit')
+                    else:
+                        st.error("A biblioteca 'pygwalker' não está instalada no ambiente. Adicione ao requirements.txt.")
 
                 with tabs[9]: # CANVAS VISUAL
                     st.subheader("🎨 Canvas de Construção Visual")
@@ -370,10 +408,13 @@ class DataVizApp:
                         
                     with col_canvas:
                         st.write("Área de Arrastar e Soltar (Dashboard Elements)")
-                        with elements("dashboard_canvas"):
-                            layout = [dashboard.Item("item1", 0, 0, 12, 6)]
-                            with dashboard.Grid(layout):
-                                mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
+                        if elements is not None:
+                            with elements("dashboard_canvas"):
+                                layout = [dashboard.Item("item1", 0, 0, 12, 6)]
+                                with dashboard.Grid(layout):
+                                    mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
+                        else:
+                            st.error("O pacote 'streamlit-elements' não está instalado no ambiente. Adicione ao requirements.txt.")
         else:
             st.info("Carregue um arquivo para iniciar.")
 
