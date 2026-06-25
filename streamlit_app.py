@@ -315,6 +315,10 @@ class DataVizApp:
         self.theme.apply_custom_css()
         with st.sidebar:
             st.title("📂 DataViz Pro V2.0")
+            
+            # TESTE CIRÚRGICO: Verificação da versão do Streamlit
+            st.info(f"**Versão Streamlit Core:** {st.__version__}")
+            
             uploaded_file = st.file_uploader("Carregar dataset", type=["csv", "xlsx", "json", "parquet"])
             st.divider()
             st.subheader("Gerenciador de Projetos")
@@ -424,93 +428,39 @@ class DataVizApp:
                         st.chat_message("user").markdown(prompt)
                         st.chat_message("assistant").markdown("Motor de IA ativo.")
 
+                # ==========================================
+                # BLOCOS DE TESTE CIRÚRGICO
+                # ==========================================
+
                 elif aba_ativa == "Smart Profiling":
                     st.subheader("Motor Inteligente: Profiling Automático")
-                    if ydata_profiling is not None:
-                        with st.spinner("Analisando..."):
-                            components.html(df.to_pandas().profile_report().to_html(), height=800, scrolling=True)
-                    else: st.error("Instale 'ydata-profiling'.")
+                    st.warning("Profiling temporariamente desativado para testes de isolamento do React (removeChild).")
                             
                 elif aba_ativa == "PyGWalker":
                     st.subheader("Tableau-like Experience (PyGWalker)")
-                    if pyg is not None: components.html(pyg.to_html(df.to_pandas()), height=1000, scrolling=True)
-                    else: st.error("Instale 'pygwalker'.")
+                    st.warning("PyGWalker temporariamente desativado para testes de isolamento do React (removeChild).")
 
                 elif aba_ativa == "Canvas Visual":
                     st.subheader("🎨 Estúdio Canvas Pro")
+                    st.warning("Canvas interativo (streamlit-elements) temporariamente desativado para confirmar diagnóstico do erro 'removeChild'.")
                     
+                    # Teste Definitivo de Estado
                     top_c1, top_c2, top_c3, top_c4 = st.columns([1, 1, 2, 8])
-                    
                     with top_c1: 
                         if st.button("↩ Undo"): HistoryManager.undo()
                     with top_c2:
                         if st.button("↪ Redo"): HistoryManager.redo()
-                    with top_c3:
-                        if st.button("💾 Salvar Projeto"):
-                            pid = self.repo.save_canvas_state("Meu_Projeto_Canvas", st.session_state['canvas_objects'])
-                            st.success(f"Salvo! ID: {pid[:8]}")
-
-                    col_tools, col_canvas = st.columns([2, 8])
                     
-                    with col_tools:
-                        st.write("**Ferramentas de Criação**")
-                        if st.button("➕ Adicionar Gráfico", use_container_width=True):
-                            new_obj = {"id": str(uuid.uuid4()), "type": "chart", "x": 0, "y": 0, "w": 6, "h": 4, "config": {"type": "Barras", "x": df.columns[0], "y": df.columns[1] if len(df.columns)>1 else df.columns[0]}}
-                            current_objs = copy.deepcopy(st.session_state['canvas_objects'])
-                            current_objs.append(new_obj)
-                            HistoryManager.push_state(current_objs)
-                            
-                        if st.button("➕ Adicionar KPI", use_container_width=True):
-                            new_obj = {"id": str(uuid.uuid4()), "type": "kpi", "x": 0, "y": 0, "w": 3, "h": 2, "config": {"label": "Novo KPI", "val": "0"}}
-                            current_objs = copy.deepcopy(st.session_state['canvas_objects'])
-                            current_objs.append(new_obj)
-                            HistoryManager.push_state(current_objs)
+                    if st.button("➕ Adicionar KPI Fictício (Teste)", use_container_width=True):
+                        new_obj = {"id": str(uuid.uuid4()), "type": "kpi", "config": {"label": "Teste", "val": "OK"}}
+                        current_objs = copy.deepcopy(st.session_state['canvas_objects'])
+                        current_objs.append(new_obj)
+                        HistoryManager.push_state(current_objs)
+                    
+                    st.divider()
+                    st.write(f"**Contagem de Itens no Estado (Python):** {len(st.session_state.get('canvas_objects', []))}")
+                    st.json(st.session_state.get('canvas_objects', []))
 
-                        st.divider()
-                        
-                        st.write("**Elementos Ativos (Editor)**")
-                        for idx, obj in enumerate(st.session_state['canvas_objects']):
-                            with st.expander(f"{obj['type'].upper()} ({obj['id'][:5]})"):
-                                if obj['type'] == 'kpi':
-                                    new_lbl = st.text_input("Label", obj['config']['label'], key=f"lbl_{obj['id']}")
-                                    new_val = st.text_input("Valor", obj['config']['val'], key=f"val_{obj['id']}")
-                                    if new_lbl != obj['config']['label'] or new_val != obj['config']['val']:
-                                        mod_objs = copy.deepcopy(st.session_state['canvas_objects'])
-                                        mod_objs[idx]['config']['label'] = new_lbl
-                                        mod_objs[idx]['config']['val'] = new_val
-                                        st.session_state["pending_update"] = mod_objs
-                                elif obj['type'] == 'chart':
-                                    st.write("Propriedades ligadas ao painel de eixos...")
-                        
-                        # CORREÇÃO CIRÚRGICA 2: Isolamento seguro do estado da renderização
-                        if "pending_update" in st.session_state:
-                            if st.button("Aplicar Alterações", type="primary", use_container_width=True):
-                                HistoryManager.push_state(st.session_state["pending_update"])
-                                del st.session_state["pending_update"]
-                                st.rerun()
-
-                    with col_canvas:
-                        if elements is not None:
-                            canvas_items = st.session_state['canvas_objects']
-                            if not canvas_items:
-                                st.info("O Canvas está vazio. Adicione elementos no painel lateral.")
-                            else:
-                                try:
-                                    # CORREÇÃO CIRÚRGICA 1: Retorno da chave estática
-                                    with elements("dashboard_canvas"):
-                                        layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
-                                        with dashboard.Grid(layout):
-                                            for obj in canvas_items:
-                                                # CORREÇÃO CIRÚRGICA 3: Eliminação da dupla chave React (Paper não recebe key)
-                                                with mui.Paper(elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column", "justifyContent": "center"}):
-                                                    if obj["type"] == "kpi":
-                                                        mui.Typography(f"{obj['config']['label']} - {obj['config']['val']}", variant="h6", sx={"fontWeight": "bold", "color": "#2c3e50", "textAlign": "center", "mt": 2})
-                                                    elif obj["type"] == "chart":
-                                                        mui.Typography("Gráfico Dinâmico Plotly", variant="caption", sx={"textAlign": "center"})
-                                except Exception as e:
-                                    st.exception(e)
-                        else:
-                            st.error("O pacote 'streamlit-elements' não está instalado.")
         else:
             st.info("Carregue um arquivo para iniciar.")
 
