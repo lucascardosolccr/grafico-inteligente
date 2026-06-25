@@ -1,12 +1,24 @@
+# --- Base Original ---
 streamlit
 polars
 pandas
 plotly
 scikit-learn
 openpyxl
-pyarrow
 scipy
 duckdb
-ydata_profiling
+
+# --- Volume 01: Engine de Dados ---
+pyarrow
+vaex
+
+# --- Volume 01: Motor Inteligente ---
+ydata-profiling
+sweetviz
+autoviz
+
+# --- Volume 01: Motor de Visualização & Canvas ---
+streamlit-echarts
+altair
 pygwalker
 streamlit-elements
