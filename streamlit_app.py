@@ -291,13 +291,23 @@ class DataVizApp:
             if df is not None:
                 schema = self.engine.get_semantic_schema(df)
                 
-                # CORREÇÃO CIRÚRGICA (Versão 1.8): Substituição de st.tabs por st.radio para isolamento de DOM
                 abas_lista = [
                     "Dashboard", "Exploratória", "Estúdio Visual", "Transformação", 
                     "Clusterização", "Anomalias", "Assistente IA", 
                     "Smart Profiling", "PyGWalker", "Canvas Visual"
                 ]
-                aba_ativa = st.radio("Navegação do Painel:", abas_lista, horizontal=True, label_visibility="collapsed")
+                
+                # CORREÇÃO CIRÚRGICA (Versão 1.10): Hard Reset de DOM via Session State e Rerun
+                if 'aba_atual' not in st.session_state:
+                    st.session_state['aba_atual'] = "Dashboard"
+                
+                aba_selecionada = st.radio("Navegação do Painel:", abas_lista, horizontal=True, label_visibility="collapsed", index=abas_lista.index(st.session_state['aba_atual']))
+                
+                if aba_selecionada != st.session_state['aba_atual']:
+                    st.session_state['aba_atual'] = aba_selecionada
+                    st.rerun() # Interrompe o ciclo atual, desmontando o React antes de construir a nova tela
+                
+                aba_ativa = st.session_state['aba_atual']
                 
                 if aba_ativa == "Dashboard":
                     st.subheader("Dashboard Executivo")
@@ -381,7 +391,6 @@ class DataVizApp:
                         with st.spinner("Analisando correlações, tendências e perfil dos dados..."):
                             pdf = df.to_pandas()
                             pr = pdf.profile_report()
-                            # CORREÇÃO CIRÚRGICA (Versão 1.9): Isolamento total do HTML para impedir o crash DOM
                             components.html(pr.to_html(), height=800, scrolling=True)
                     else:
                         st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Adicione ao requirements.txt.")
@@ -391,7 +400,6 @@ class DataVizApp:
                     st.write("Arraste colunas, medidas e dimensões para criar gráficos.")
                     if pyg is not None:
                         pdf = df.to_pandas()
-                        # CORREÇÃO CIRÚRGICA (Versão 1.9): Isolamento total do HTML para impedir o crash DOM
                         components.html(pyg.to_html(pdf), height=1000, scrolling=True)
                     else:
                         st.error("A biblioteca 'pygwalker' não está instalada no ambiente. Adicione ao requirements.txt.")
@@ -414,7 +422,6 @@ class DataVizApp:
                     with col_canvas:
                         st.write("Área de Arrastar e Soltar (Dashboard Elements)")
                         if elements is not None:
-                            # O Streamlit Elements foi mantido com o Lazy Load por precaução, já que não suporta to_html direto
                             if st.checkbox("Ativar Canvas Visual", key="chk_canvas"):
                                 with elements("dashboard_canvas"):
                                     layout = [dashboard.Item("item1", 0, 0, 12, 6)]
