@@ -49,7 +49,7 @@ except ImportError: elements = mui = html = dashboard = None
 st.set_page_config(page_title="DataViz Pro Engine", layout="wide", initial_sidebar_state="expanded")
 
 # ==========================================
-# MOTOR DE BANCO DE DADOS (VOLUME 02)
+# MOTOR DE BANCO DE DADOS
 # ==========================================
 class ProjectRepository:
     def __init__(self):
@@ -95,7 +95,7 @@ class ProjectRepository:
         return [json.loads(row[0]) for row in layers]
 
 # ==========================================
-# MOTOR DE HISTÓRICO (UNDO/REDO - VOL 02)
+# MOTOR DE HISTÓRICO
 # ==========================================
 class HistoryManager:
     @staticmethod
@@ -126,7 +126,7 @@ class HistoryManager:
             st.session_state['canvas_objects'] = copy.deepcopy(st.session_state['history'][st.session_state['history_index']])
 
 # ==========================================
-# MOTOR DE PERFILAMENTO SEMÂNTICO
+# MOTORES ANALÍTICOS E VISUAIS
 # ==========================================
 class DataProfiler:
     @staticmethod
@@ -194,9 +194,6 @@ class DataEngine:
     def query(self, sql): return self.con.execute(sql).df()
     def get_semantic_schema(self, df): return {col: DataProfiler.identify_type(col, df[col]) for col in df.columns}
 
-# ==========================================
-# MOTOR DE VISUALIZAÇÃO (ATUALIZADO - VOL 02)
-# ==========================================
 class GraphEngine:
     @staticmethod
     def create_plot(df, plot_type, x, y, color=None, config=None):
@@ -221,17 +218,11 @@ class GraphEngine:
         else: fig = px.bar(pdf, x=x, y=y)
 
         if config and hasattr(fig, 'update_layout'):
-            fig.update_layout(
-                title=config.get('title', ''),
-                plot_bgcolor=config.get('plot_bgcolor', None),
-                paper_bgcolor=config.get('paper_bgcolor', None)
-            )
-            
+            fig.update_layout(title=config.get('title', ''), plot_bgcolor=config.get('plot_bgcolor', None), paper_bgcolor=config.get('paper_bgcolor', None))
             x_params = {}
             if config.get('invert_x'): x_params['autorange'] = 'reversed'
             if config.get('scale_x') == 'Log': x_params['type'] = 'log'
             if x_params: fig.update_xaxes(**x_params)
-
             y_params = {}
             if config.get('invert_y'): y_params['autorange'] = 'reversed'
             if config.get('scale_y') == 'Log': y_params['type'] = 'log'
@@ -315,9 +306,7 @@ class DataVizApp:
         self.theme.apply_custom_css()
         with st.sidebar:
             st.title("📂 DataViz Pro V2.0")
-            
-            # TESTE CIRÚRGICO: Verificação da versão do Streamlit
-            st.info(f"**Versão Streamlit Core:** {st.__version__}")
+            st.info(f"**Versão Streamlit:** {st.__version__}")
             
             uploaded_file = st.file_uploader("Carregar dataset", type=["csv", "xlsx", "json", "parquet"])
             st.divider()
@@ -342,13 +331,8 @@ class DataVizApp:
                 
                 abas_lista = ["Dashboard", "Exploratória", "Estúdio Visual", "Transformação", "Clusterização", "Anomalias", "Assistente IA", "Smart Profiling", "PyGWalker", "Canvas Visual"]
                 
-                if 'aba_atual' not in st.session_state: st.session_state['aba_atual'] = "Dashboard"
-
-                def mudar_aba():
-                    st.session_state['aba_atual'] = st.session_state['nav_radio']
-
-                st.radio("Navegação do Painel:", abas_lista, horizontal=True, key="nav_radio", index=abas_lista.index(st.session_state['aba_atual']), on_change=mudar_aba, label_visibility="collapsed")
-                aba_ativa = st.session_state['aba_atual']
+                # CORREÇÃO CIRÚRGICA 2.5: Simplificação total do Radio para evitar race conditions no React
+                aba_ativa = st.radio("Navegação do Painel:", abas_lista, horizontal=True, label_visibility="collapsed")
                 
                 if aba_ativa == "Dashboard":
                     st.subheader("Dashboard Executivo")
@@ -359,14 +343,16 @@ class DataVizApp:
                         cols_ui = st.columns(min(len(cols), 4))
                         for i, m in enumerate(cols[:4]):
                             with cols_ui[i]: st.markdown(self.theme.render_kpi_html(m, f"{df[m].sum():,.0f}"), unsafe_allow_html=True)
-                    st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True)
+                    # CORREÇÃO CIRÚRGICA 2.5: Injeção de chave manual no Plotly
+                    st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True, key="plot_dash")
 
                 elif aba_ativa == "Exploratória":
                     st.subheader("Configuração Manual de Gráficos")
                     c1, c2 = st.columns(2)
                     x = c1.selectbox("Eixo X (Manual)", list(df.columns), key="expl_x")
                     y = c2.selectbox("Eixo Y (Manual)", list(df.columns), key="expl_y")
-                    st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True)
+                    # CORREÇÃO CIRÚRGICA 2.5: Injeção de chave manual no Plotly
+                    st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True, key="plot_expl")
 
                 elif aba_ativa == "Estúdio Visual":
                     st.subheader("Estúdio de Visualização Avançado")
@@ -395,7 +381,9 @@ class DataVizApp:
                         
                         if gtype == "Altair" and alt is not None: st.altair_chart(self.viz.create_altair_plot(df, gx, gy), use_container_width=True)
                         elif gtype == "ECharts" and st_echarts is not None: st_echarts(options=self.viz.get_echarts_options(df.to_pandas()[gx].tolist()[:50], df.to_pandas()[gy].tolist()[:50]), height="400px")
-                        else: st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy, config=config), use_container_width=True)
+                        else: 
+                            # CORREÇÃO CIRÚRGICA 2.5: Injeção de chave manual no Plotly
+                            st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy, config=config), use_container_width=True, key="plot_estudio")
 
                 elif aba_ativa == "Transformação":
                     st.subheader("Engenharia de Dados")
@@ -428,39 +416,68 @@ class DataVizApp:
                         st.chat_message("user").markdown(prompt)
                         st.chat_message("assistant").markdown("Motor de IA ativo.")
 
-                # ==========================================
-                # BLOCOS DE TESTE CIRÚRGICO
-                # ==========================================
-
                 elif aba_ativa == "Smart Profiling":
                     st.subheader("Motor Inteligente: Profiling Automático")
-                    st.warning("Profiling temporariamente desativado para testes de isolamento do React (removeChild).")
+                    if ydata_profiling is not None:
+                        with st.spinner("Analisando..."):
+                            components.html(df.to_pandas().profile_report().to_html(), height=800, scrolling=True)
+                    else: st.error("Instale 'ydata-profiling'.")
                             
                 elif aba_ativa == "PyGWalker":
                     st.subheader("Tableau-like Experience (PyGWalker)")
-                    st.warning("PyGWalker temporariamente desativado para testes de isolamento do React (removeChild).")
+                    if pyg is not None: components.html(pyg.to_html(df.to_pandas()), height=1000, scrolling=True)
+                    else: st.error("Instale 'pygwalker'.")
 
                 elif aba_ativa == "Canvas Visual":
+                    # CORREÇÃO CIRÚRGICA 2.5: Reativação do Canvas limpo e estável
                     st.subheader("🎨 Estúdio Canvas Pro")
-                    st.warning("Canvas interativo (streamlit-elements) temporariamente desativado para confirmar diagnóstico do erro 'removeChild'.")
                     
-                    # Teste Definitivo de Estado
                     top_c1, top_c2, top_c3, top_c4 = st.columns([1, 1, 2, 8])
                     with top_c1: 
                         if st.button("↩ Undo"): HistoryManager.undo()
                     with top_c2:
                         if st.button("↪ Redo"): HistoryManager.redo()
-                    
-                    if st.button("➕ Adicionar KPI Fictício (Teste)", use_container_width=True):
-                        new_obj = {"id": str(uuid.uuid4()), "type": "kpi", "config": {"label": "Teste", "val": "OK"}}
-                        current_objs = copy.deepcopy(st.session_state['canvas_objects'])
-                        current_objs.append(new_obj)
-                        HistoryManager.push_state(current_objs)
-                    
-                    st.divider()
-                    st.write(f"**Contagem de Itens no Estado (Python):** {len(st.session_state.get('canvas_objects', []))}")
-                    st.json(st.session_state.get('canvas_objects', []))
+                    with top_c3:
+                        if st.button("💾 Salvar Projeto"):
+                            pid = self.repo.save_canvas_state("Meu_Projeto_Canvas", st.session_state['canvas_objects'])
+                            st.success(f"Salvo! ID: {pid[:8]}")
 
+                    col_tools, col_canvas = st.columns([2, 8])
+                    
+                    with col_tools:
+                        st.write("**Ferramentas**")
+                        if st.button("➕ Adicionar Gráfico", use_container_width=True):
+                            new_obj = {"id": str(uuid.uuid4()), "type": "chart", "x": 0, "y": 0, "w": 6, "h": 4, "config": {"type": "Barras", "x": df.columns[0], "y": df.columns[1] if len(df.columns)>1 else df.columns[0]}}
+                            current_objs = copy.deepcopy(st.session_state['canvas_objects'])
+                            current_objs.append(new_obj)
+                            HistoryManager.push_state(current_objs)
+                            
+                        if st.button("➕ Adicionar KPI", use_container_width=True):
+                            new_obj = {"id": str(uuid.uuid4()), "type": "kpi", "x": 0, "y": 0, "w": 3, "h": 2, "config": {"label": "Novo KPI", "val": "0"}}
+                            current_objs = copy.deepcopy(st.session_state['canvas_objects'])
+                            current_objs.append(new_obj)
+                            HistoryManager.push_state(current_objs)
+
+                    with col_canvas:
+                        if elements is not None:
+                            canvas_items = st.session_state['canvas_objects']
+                            if not canvas_items:
+                                st.info("O Canvas está vazio. Adicione elementos no painel lateral.")
+                            else:
+                                try:
+                                    with elements("dashboard_canvas"):
+                                        layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
+                                        with dashboard.Grid(layout):
+                                            for obj in canvas_items:
+                                                with mui.Paper(elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column", "justifyContent": "center"}):
+                                                    if obj["type"] == "kpi":
+                                                        mui.Typography(f"{obj['config']['label']} - {obj['config']['val']}", variant="h6", sx={"fontWeight": "bold", "color": "#2c3e50", "textAlign": "center"})
+                                                    elif obj["type"] == "chart":
+                                                        mui.Typography("Gráfico Dinâmico Plotly", variant="caption", sx={"textAlign": "center"})
+                                except Exception as e:
+                                    st.exception(e)
+                        else:
+                            st.error("O pacote 'streamlit-elements' não está instalado.")
         else:
             st.info("Carregue um arquivo para iniciar.")
 
