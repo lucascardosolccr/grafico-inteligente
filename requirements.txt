@@ -1,5 +1,8 @@
+# --- Fixação de Versão Segura (Solução de DOM) ---
+streamlit==1.32.2
+streamlit-elements==0.1.0
+
 # --- Base Original ---
-streamlit==1.29.0
 polars
 pandas
 plotly
@@ -21,4 +24,3 @@ autoviz
 streamlit-echarts
 altair
 pygwalker
-streamlit-elements==0.1.0
