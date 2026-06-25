@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components # NOVO: Módulo para isolamento de DOM
 import polars as pl
 import pandas as pd
 import plotly.express as px
@@ -20,13 +21,11 @@ try:
 except ImportError:
     vaex = None
 
-# CORREÇÃO CIRÚRGICA: Tratamento de ausência do pacote ydata_profiling (Versão 1.3)
+# CORREÇÃO CIRÚRGICA: Tratamento de ausência do pacote ydata_profiling (Versão 1.3/1.9)
 try:
     import ydata_profiling
-    from streamlit_pandas_profiling import st_profile_report
 except ImportError:
     ydata_profiling = None
-    st_profile_report = None
 
 # CORREÇÃO CIRÚRGICA: Tratamento de ausência de pacotes visuais no Streamlit Cloud (Versão 1.4)
 try:
@@ -378,21 +377,22 @@ class DataVizApp:
 
                 elif aba_ativa == "Smart Profiling":
                     st.subheader("Motor Inteligente: Profiling Automático")
-                    if st.button("Gerar Perfil Completo (YData/SweetViz)"):
-                        if ydata_profiling is not None and st_profile_report is not None:
-                            with st.spinner("Analisando correlações, tendências e perfil dos dados..."):
-                                pdf = df.to_pandas()
-                                pr = pdf.profile_report()
-                                st_profile_report(pr)
-                        else:
-                            st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Adicione ao requirements.txt.")
+                    if ydata_profiling is not None:
+                        with st.spinner("Analisando correlações, tendências e perfil dos dados..."):
+                            pdf = df.to_pandas()
+                            pr = pdf.profile_report()
+                            # CORREÇÃO CIRÚRGICA (Versão 1.9): Isolamento total do HTML para impedir o crash DOM
+                            components.html(pr.to_html(), height=800, scrolling=True)
+                    else:
+                        st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Adicione ao requirements.txt.")
                             
                 elif aba_ativa == "PyGWalker":
                     st.subheader("Tableau-like Experience (PyGWalker)")
                     st.write("Arraste colunas, medidas e dimensões para criar gráficos.")
                     if pyg is not None:
                         pdf = df.to_pandas()
-                        pyg.walk(pdf, env='Streamlit')
+                        # CORREÇÃO CIRÚRGICA (Versão 1.9): Isolamento total do HTML para impedir o crash DOM
+                        components.html(pyg.to_html(pdf), height=1000, scrolling=True)
                     else:
                         st.error("A biblioteca 'pygwalker' não está instalada no ambiente. Adicione ao requirements.txt.")
 
@@ -414,10 +414,12 @@ class DataVizApp:
                     with col_canvas:
                         st.write("Área de Arrastar e Soltar (Dashboard Elements)")
                         if elements is not None:
-                            with elements("dashboard_canvas"):
-                                layout = [dashboard.Item("item1", 0, 0, 12, 6)]
-                                with dashboard.Grid(layout):
-                                    mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
+                            # O Streamlit Elements foi mantido com o Lazy Load por precaução, já que não suporta to_html direto
+                            if st.checkbox("Ativar Canvas Visual", key="chk_canvas"):
+                                with elements("dashboard_canvas"):
+                                    layout = [dashboard.Item("item1", 0, 0, 12, 6)]
+                                    with dashboard.Grid(layout):
+                                        mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
                         else:
                             st.error("O pacote 'streamlit-elements' não está instalado no ambiente. Adicione ao requirements.txt.")
         else:
