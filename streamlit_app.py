@@ -468,7 +468,6 @@ class DataVizApp:
 
                         st.divider()
                         
-                        # CORREÇÃO CIRÚRGICA 2: Isolamento da Fila de Estado (pending_update)
                         st.write("**Elementos Ativos (Editor)**")
                         for idx, obj in enumerate(st.session_state['canvas_objects']):
                             with st.expander(f"{obj['type'].upper()} ({obj['id'][:5]})"):
@@ -483,9 +482,12 @@ class DataVizApp:
                                 elif obj['type'] == 'chart':
                                     st.write("Propriedades ligadas ao painel de eixos...")
                         
+                        # CORREÇÃO CIRÚRGICA 2: Isolamento seguro do estado da renderização
                         if "pending_update" in st.session_state:
-                            HistoryManager.push_state(st.session_state["pending_update"])
-                            del st.session_state["pending_update"]
+                            if st.button("Aplicar Alterações", type="primary", use_container_width=True):
+                                HistoryManager.push_state(st.session_state["pending_update"])
+                                del st.session_state["pending_update"]
+                                st.rerun()
 
                     with col_canvas:
                         if elements is not None:
@@ -494,15 +496,14 @@ class DataVizApp:
                                 st.info("O Canvas está vazio. Adicione elementos no painel lateral.")
                             else:
                                 try:
-                                    # CORREÇÃO CIRÚRGICA 3: Forçamento de Remount via Hash Único Dinâmico
-                                    with elements(f"canvas_{hash(str(canvas_items))}"):
+                                    # CORREÇÃO CIRÚRGICA 1: Retorno da chave estática
+                                    with elements("dashboard_canvas"):
                                         layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
                                         with dashboard.Grid(layout):
                                             for obj in canvas_items:
-                                                # CORREÇÃO CIRÚRGICA 1: Chaves Exclusivas (dashboard.Item vs mui.Paper)
-                                                with mui.Paper(key=f"paper_{obj['id']}", elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column", "justifyContent": "center"}):
+                                                # CORREÇÃO CIRÚRGICA 3: Eliminação da dupla chave React (Paper não recebe key)
+                                                with mui.Paper(elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column", "justifyContent": "center"}):
                                                     if obj["type"] == "kpi":
-                                                        # CORREÇÃO CIRÚRGICA 4: Simplificação MUI para evitar bugs de aninhamento
                                                         mui.Typography(f"{obj['config']['label']} - {obj['config']['val']}", variant="h6", sx={"fontWeight": "bold", "color": "#2c3e50", "textAlign": "center", "mt": 2})
                                                     elif obj["type"] == "chart":
                                                         mui.Typography("Gráfico Dinâmico Plotly", variant="caption", sx={"textAlign": "center"})
