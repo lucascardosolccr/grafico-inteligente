@@ -365,7 +365,7 @@ class DataVizApp:
                     st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True)
 
                 elif aba_ativa == "Estúdio Visual":
-                    st.subheader("Estúdio de Visualização Avançado (Com Editor de Eixos e Propriedades)")
+                    st.subheader("Estúdio de Visualização Avançado")
                     c1, c2, c3 = st.columns([1, 3, 1])
                     with c1:
                         gx = st.selectbox("Eixo X", list(df.columns), key="studio_x")
@@ -441,7 +441,6 @@ class DataVizApp:
                     
                     top_c1, top_c2, top_c3, top_c4 = st.columns([1, 1, 2, 8])
                     
-                    # Correção Cirúrgica 2: Remoção de todos os st.rerun() nos botões
                     with top_c1: 
                         if st.button("↩ Undo"): HistoryManager.undo()
                     with top_c2:
@@ -468,6 +467,8 @@ class DataVizApp:
                             HistoryManager.push_state(current_objs)
 
                         st.divider()
+                        
+                        # CORREÇÃO CIRÚRGICA 2: Isolamento da Fila de Estado (pending_update)
                         st.write("**Elementos Ativos (Editor)**")
                         for idx, obj in enumerate(st.session_state['canvas_objects']):
                             with st.expander(f"{obj['type'].upper()} ({obj['id'][:5]})"):
@@ -478,9 +479,13 @@ class DataVizApp:
                                         mod_objs = copy.deepcopy(st.session_state['canvas_objects'])
                                         mod_objs[idx]['config']['label'] = new_lbl
                                         mod_objs[idx]['config']['val'] = new_val
-                                        HistoryManager.push_state(mod_objs)
+                                        st.session_state["pending_update"] = mod_objs
                                 elif obj['type'] == 'chart':
                                     st.write("Propriedades ligadas ao painel de eixos...")
+                        
+                        if "pending_update" in st.session_state:
+                            HistoryManager.push_state(st.session_state["pending_update"])
+                            del st.session_state["pending_update"]
 
                     with col_canvas:
                         if elements is not None:
@@ -488,22 +493,19 @@ class DataVizApp:
                             if not canvas_items:
                                 st.info("O Canvas está vazio. Adicione elementos no painel lateral.")
                             else:
-                                # Correção Cirúrgica 4: Envelopamento com Try/Except
                                 try:
-                                    # Correção Cirúrgica 1: Chave fixa para o Canvas
-                                    with elements("dashboard_canvas"):
+                                    # CORREÇÃO CIRÚRGICA 3: Forçamento de Remount via Hash Único Dinâmico
+                                    with elements(f"canvas_{hash(str(canvas_items))}"):
                                         layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
                                         with dashboard.Grid(layout):
                                             for obj in canvas_items:
-                                                with mui.Paper(key=obj["id"], elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column"}):
+                                                # CORREÇÃO CIRÚRGICA 1: Chaves Exclusivas (dashboard.Item vs mui.Paper)
+                                                with mui.Paper(key=f"paper_{obj['id']}", elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column", "justifyContent": "center"}):
                                                     if obj["type"] == "kpi":
-                                                        # Correção Cirúrgica 3: Remoção do dangerouslySetInnerHTML
-                                                        mui.Box(sx={"display": "flex", "flexDirection": "column", "justifyContent": "center", "alignItems": "center", "height": "100%", "textAlign": "center"})(
-                                                            mui.Typography(obj["config"]["label"], variant="caption", sx={"color": "#7f8c8d", "textTransform": "uppercase", "mb": 1}),
-                                                            mui.Typography(obj["config"]["val"], variant="h5", sx={"fontWeight": "bold", "color": "#2c3e50"})
-                                                        )
+                                                        # CORREÇÃO CIRÚRGICA 4: Simplificação MUI para evitar bugs de aninhamento
+                                                        mui.Typography(f"{obj['config']['label']} - {obj['config']['val']}", variant="h6", sx={"fontWeight": "bold", "color": "#2c3e50", "textAlign": "center", "mt": 2})
                                                     elif obj["type"] == "chart":
-                                                        mui.Typography("Gráfico Dinâmico Plotly (Placeholder Seguro)", variant="caption")
+                                                        mui.Typography("Gráfico Dinâmico Plotly", variant="caption", sx={"textAlign": "center"})
                                 except Exception as e:
                                     st.exception(e)
                         else:
