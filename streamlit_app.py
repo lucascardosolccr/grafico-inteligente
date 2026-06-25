@@ -70,7 +70,6 @@ class ProjectRepository:
         p_id = str(uuid.uuid4())
         d_id = str(uuid.uuid4())
         
-        # Inserção transacional simplificada para o Canvas
         cursor.execute("INSERT INTO projects (id, name) VALUES (?, ?)", (p_id, project_name))
         cursor.execute("INSERT INTO dashboards (id, project_id, name) VALUES (?, ?, ?)", (d_id, p_id, "Principal"))
         
@@ -102,17 +101,14 @@ class HistoryManager:
     @staticmethod
     def init_state():
         if 'history' not in st.session_state:
-            st.session_state['history'] = [[]] # Inicializa com canvas vazio
+            st.session_state['history'] = [[]] 
             st.session_state['history_index'] = 0
             st.session_state['canvas_objects'] = []
 
     @staticmethod
     def push_state(new_objects):
-        # Trunca o futuro se houver edição no meio do passado
         current_idx = st.session_state['history_index']
         st.session_state['history'] = st.session_state['history'][:current_idx + 1]
-        
-        # Salva a nova cópia
         st.session_state['history'].append(copy.deepcopy(new_objects))
         st.session_state['history_index'] += 1
         st.session_state['canvas_objects'] = copy.deepcopy(new_objects)
@@ -207,7 +203,6 @@ class GraphEngine:
         pdf = df.to_pandas()
         val_y = y if pd.api.types.is_numeric_dtype(pdf[y]) else None
         
-        # Base Instantiation
         if plot_type == "Linha": fig = px.line(pdf, x=x, y=y)
         elif plot_type == "Barras": fig = px.bar(pdf, x=x, y=y, color=color)
         elif plot_type == "Dispersão": fig = px.scatter(pdf, x=x, y=y, color=color)
@@ -225,22 +220,18 @@ class GraphEngine:
         elif plot_type == "Density Map": fig = px.density_mapbox(pdf, lat=x, lon=y, radius=10, mapbox_style="carto-positron") if 'lat' in x.lower() else px.density_heatmap(pdf, x=x, y=y)
         else: fig = px.bar(pdf, x=x, y=y)
 
-        # Propriedades Dinâmicas e Eixos (Volume 02)
         if config and hasattr(fig, 'update_layout'):
-            # Layout Updates
             fig.update_layout(
                 title=config.get('title', ''),
                 plot_bgcolor=config.get('plot_bgcolor', None),
                 paper_bgcolor=config.get('paper_bgcolor', None)
             )
             
-            # X Axis Formats
             x_params = {}
             if config.get('invert_x'): x_params['autorange'] = 'reversed'
             if config.get('scale_x') == 'Log': x_params['type'] = 'log'
             if x_params: fig.update_xaxes(**x_params)
 
-            # Y Axis Formats
             y_params = {}
             if config.get('invert_y'): y_params['autorange'] = 'reversed'
             if config.get('scale_y') == 'Log': y_params['type'] = 'log'
@@ -250,7 +241,7 @@ class GraphEngine:
                 y_params['tickformat'] = ',.2f'
                 y_params['tickprefix'] = 'R$ '
             elif fmt == 'Milhar': y_params['tickformat'] = '.2s'
-            elif fmt == 'Milhões': y_params['tickformat'] = '.2s' # Plotly handles SI scaling well with 's'
+            elif fmt == 'Milhões': y_params['tickformat'] = '.2s' 
             if y_params: fig.update_yaxes(**y_params)
 
         return fig
@@ -348,15 +339,12 @@ class DataVizApp:
                 abas_lista = ["Dashboard", "Exploratória", "Estúdio Visual", "Transformação", "Clusterização", "Anomalias", "Assistente IA", "Smart Profiling", "PyGWalker", "Canvas Visual"]
                 
                 if 'aba_atual' not in st.session_state: st.session_state['aba_atual'] = "Dashboard"
-                if 'render_id' not in st.session_state: st.session_state['render_id'] = 0
 
                 def mudar_aba():
                     st.session_state['aba_atual'] = st.session_state['nav_radio']
-                    st.session_state['render_id'] += 1
 
                 st.radio("Navegação do Painel:", abas_lista, horizontal=True, key="nav_radio", index=abas_lista.index(st.session_state['aba_atual']), on_change=mudar_aba, label_visibility="collapsed")
                 aba_ativa = st.session_state['aba_atual']
-                render_id = st.session_state['render_id']
                 
                 if aba_ativa == "Dashboard":
                     st.subheader("Dashboard Executivo")
@@ -451,12 +439,13 @@ class DataVizApp:
                 elif aba_ativa == "Canvas Visual":
                     st.subheader("🎨 Estúdio Canvas Pro")
                     
-                    # Controles Superiores: Undo/Redo & Save
                     top_c1, top_c2, top_c3, top_c4 = st.columns([1, 1, 2, 8])
+                    
+                    # Correção Cirúrgica 2: Remoção de todos os st.rerun() nos botões
                     with top_c1: 
-                        if st.button("↩ Undo"): HistoryManager.undo(); st.rerun()
+                        if st.button("↩ Undo"): HistoryManager.undo()
                     with top_c2:
-                        if st.button("↪ Redo"): HistoryManager.redo(); st.rerun()
+                        if st.button("↪ Redo"): HistoryManager.redo()
                     with top_c3:
                         if st.button("💾 Salvar Projeto"):
                             pid = self.repo.save_canvas_state("Meu_Projeto_Canvas", st.session_state['canvas_objects'])
@@ -466,20 +455,17 @@ class DataVizApp:
                     
                     with col_tools:
                         st.write("**Ferramentas de Criação**")
-                        # Injeção dinâmica no session_state.canvas_objects
                         if st.button("➕ Adicionar Gráfico", use_container_width=True):
                             new_obj = {"id": str(uuid.uuid4()), "type": "chart", "x": 0, "y": 0, "w": 6, "h": 4, "config": {"type": "Barras", "x": df.columns[0], "y": df.columns[1] if len(df.columns)>1 else df.columns[0]}}
                             current_objs = copy.deepcopy(st.session_state['canvas_objects'])
                             current_objs.append(new_obj)
                             HistoryManager.push_state(current_objs)
-                            st.rerun()
                             
                         if st.button("➕ Adicionar KPI", use_container_width=True):
                             new_obj = {"id": str(uuid.uuid4()), "type": "kpi", "x": 0, "y": 0, "w": 3, "h": 2, "config": {"label": "Novo KPI", "val": "0"}}
                             current_objs = copy.deepcopy(st.session_state['canvas_objects'])
                             current_objs.append(new_obj)
                             HistoryManager.push_state(current_objs)
-                            st.rerun()
 
                         st.divider()
                         st.write("**Elementos Ativos (Editor)**")
@@ -493,7 +479,6 @@ class DataVizApp:
                                         mod_objs[idx]['config']['label'] = new_lbl
                                         mod_objs[idx]['config']['val'] = new_val
                                         HistoryManager.push_state(mod_objs)
-                                        st.rerun()
                                 elif obj['type'] == 'chart':
                                     st.write("Propriedades ligadas ao painel de eixos...")
 
@@ -503,18 +488,24 @@ class DataVizApp:
                             if not canvas_items:
                                 st.info("O Canvas está vazio. Adicione elementos no painel lateral.")
                             else:
-                                with elements(f"dashboard_canvas_id_{render_id}"):
-                                    # Mapeamento do array de estado para o Grid Layout dinâmico
-                                    layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
-                                    with dashboard.Grid(layout):
-                                        for obj in canvas_items:
-                                            with mui.Paper(key=obj["id"], elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column"}):
-                                                if obj["type"] == "kpi":
-                                                    # Integrando o HTML do Theme Builder no Elements via string dangerouslySetInnerHTML
-                                                    html_kpi = self.theme.render_kpi_html(obj["config"]["label"], obj["config"]["val"])
-                                                    html.div(dangerouslySetInnerHTML={"__html": html_kpi})
-                                                elif obj["type"] == "chart":
-                                                    mui.Typography("Gráfico Dinâmico Plotly (Requer integração complexa JS/Python para renderizar dentro do iframe do elements)", variant="caption")
+                                # Correção Cirúrgica 4: Envelopamento com Try/Except
+                                try:
+                                    # Correção Cirúrgica 1: Chave fixa para o Canvas
+                                    with elements("dashboard_canvas"):
+                                        layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
+                                        with dashboard.Grid(layout):
+                                            for obj in canvas_items:
+                                                with mui.Paper(key=obj["id"], elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column"}):
+                                                    if obj["type"] == "kpi":
+                                                        # Correção Cirúrgica 3: Remoção do dangerouslySetInnerHTML
+                                                        mui.Box(sx={"display": "flex", "flexDirection": "column", "justifyContent": "center", "alignItems": "center", "height": "100%", "textAlign": "center"})(
+                                                            mui.Typography(obj["config"]["label"], variant="caption", sx={"color": "#7f8c8d", "textTransform": "uppercase", "mb": 1}),
+                                                            mui.Typography(obj["config"]["val"], variant="h5", sx={"fontWeight": "bold", "color": "#2c3e50"})
+                                                        )
+                                                    elif obj["type"] == "chart":
+                                                        mui.Typography("Gráfico Dinâmico Plotly (Placeholder Seguro)", variant="caption")
+                                except Exception as e:
+                                    st.exception(e)
                         else:
                             st.error("O pacote 'streamlit-elements' não está instalado.")
         else:
