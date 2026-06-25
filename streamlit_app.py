@@ -9,60 +9,125 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import IsolationForest
 import numpy as np
+import sqlite3
+import json
+import uuid
+import copy
 
 # ==========================================
 # NOVOS IMPORTS - VOLUME 01
 # ==========================================
 import pyarrow as pa
 
-# Tratamento de ausência do pacote vaex no ambiente
-try:
-    import vaex
-except ImportError:
-    vaex = None
+try: import vaex
+except ImportError: vaex = None
 
-# Tratamento de ausência do pacote ydata_profiling
-try:
-    import ydata_profiling
-except ImportError:
-    ydata_profiling = None
+try: import ydata_profiling
+except ImportError: ydata_profiling = None
 
-# Tratamento de ausência de pacotes visuais no Streamlit Cloud
-try:
-    import sweetviz as sv
-except ImportError:
-    sv = None
+try: import sweetviz as sv
+except ImportError: sv = None
 
-try:
-    from autoviz.AutoViz_Class import AutoViz_Class
-except ImportError:
-    AutoViz_Class = None
+try: from autoviz.AutoViz_Class import AutoViz_Class
+except ImportError: AutoViz_Class = None
 
-try:
-    from streamlit_echarts import st_echarts
-except ImportError:
-    st_echarts = None
+try: from streamlit_echarts import st_echarts
+except ImportError: st_echarts = None
 
-try:
-    import altair as alt
-except ImportError:
-    alt = None
+try: import altair as alt
+except ImportError: alt = None
 
-try:
-    import pygwalker as pyg
-except ImportError:
-    pyg = None
+try: import pygwalker as pyg
+except ImportError: pyg = None
 
-try:
-    from streamlit_elements import elements, mui, html, dashboard
-except ImportError:
-    elements = mui = html = dashboard = None
-
+try: from streamlit_elements import elements, mui, html, dashboard
+except ImportError: elements = mui = html = dashboard = None
 
 # ==========================================
 # CONFIGURAÇÃO GLOBAL
 # ==========================================
 st.set_page_config(page_title="DataViz Pro Engine", layout="wide", initial_sidebar_state="expanded")
+
+# ==========================================
+# MOTOR DE BANCO DE DADOS (VOLUME 02)
+# ==========================================
+class ProjectRepository:
+    def __init__(self):
+        self.conn = sqlite3.connect("projects.db", check_same_thread=False)
+        self._init_schema()
+
+    def _init_schema(self):
+        cursor = self.conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS dashboards (id TEXT PRIMARY KEY, project_id TEXT, name TEXT)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS charts (id TEXT PRIMARY KEY, dashboard_id TEXT, type TEXT, config TEXT)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS layers (id TEXT PRIMARY KEY, dashboard_id TEXT, z_index INTEGER, payload TEXT)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS themes (id TEXT PRIMARY KEY, name TEXT, config TEXT)")
+        self.conn.commit()
+
+    def save_canvas_state(self, project_name, canvas_objects):
+        cursor = self.conn.cursor()
+        p_id = str(uuid.uuid4())
+        d_id = str(uuid.uuid4())
+        
+        # Inserção transacional simplificada para o Canvas
+        cursor.execute("INSERT INTO projects (id, name) VALUES (?, ?)", (p_id, project_name))
+        cursor.execute("INSERT INTO dashboards (id, project_id, name) VALUES (?, ?, ?)", (d_id, p_id, "Principal"))
+        
+        for obj in canvas_objects:
+            cursor.execute(
+                "INSERT INTO layers (id, dashboard_id, z_index, payload) VALUES (?, ?, ?, ?)",
+                (obj['id'], d_id, 1, json.dumps(obj))
+            )
+        self.conn.commit()
+        return p_id
+
+    def load_projects(self):
+        return pd.read_sql_query("SELECT id, name, updated_at FROM projects ORDER BY updated_at DESC", self.conn)
+
+    def load_canvas_state(self, project_id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id FROM dashboards WHERE project_id = ? LIMIT 1", (project_id,))
+        dash_row = cursor.fetchone()
+        if not dash_row: return []
+        
+        cursor.execute("SELECT payload FROM layers WHERE dashboard_id = ?", (dash_row[0],))
+        layers = cursor.fetchall()
+        return [json.loads(row[0]) for row in layers]
+
+# ==========================================
+# MOTOR DE HISTÓRICO (UNDO/REDO - VOL 02)
+# ==========================================
+class HistoryManager:
+    @staticmethod
+    def init_state():
+        if 'history' not in st.session_state:
+            st.session_state['history'] = [[]] # Inicializa com canvas vazio
+            st.session_state['history_index'] = 0
+            st.session_state['canvas_objects'] = []
+
+    @staticmethod
+    def push_state(new_objects):
+        # Trunca o futuro se houver edição no meio do passado
+        current_idx = st.session_state['history_index']
+        st.session_state['history'] = st.session_state['history'][:current_idx + 1]
+        
+        # Salva a nova cópia
+        st.session_state['history'].append(copy.deepcopy(new_objects))
+        st.session_state['history_index'] += 1
+        st.session_state['canvas_objects'] = copy.deepcopy(new_objects)
+
+    @staticmethod
+    def undo():
+        if st.session_state['history_index'] > 0:
+            st.session_state['history_index'] -= 1
+            st.session_state['canvas_objects'] = copy.deepcopy(st.session_state['history'][st.session_state['history_index']])
+
+    @staticmethod
+    def redo():
+        if st.session_state['history_index'] < len(st.session_state['history']) - 1:
+            st.session_state['history_index'] += 1
+            st.session_state['canvas_objects'] = copy.deepcopy(st.session_state['history'][st.session_state['history_index']])
 
 # ==========================================
 # MOTOR DE PERFILAMENTO SEMÂNTICO
@@ -86,21 +151,12 @@ class DataProfiler:
         score = 100 - (nulls / total * 100) if total > 0 else 100
         return round(max(0, score), 2)
 
-# ==========================================
-# MOTOR DE TRANSFORMAÇÃO (LIMPEZA)
-# ==========================================
 class DataTransformer:
     @staticmethod
-    def remove_duplicates(df):
-        return df.unique()
-
+    def remove_duplicates(df): return df.unique()
     @staticmethod
-    def fill_nulls(df):
-        return df.fill_null(strategy="forward")
+    def fill_nulls(df): return df.fill_null(strategy="forward")
 
-# ==========================================
-# MOTOR DE INSIGHTS
-# ==========================================
 class InsightEngine:
     @staticmethod
     def generate_summary(df):
@@ -110,12 +166,9 @@ class InsightEngine:
             col = numeric_cols[0]
             val = df[col].mean()
             insights.append(f"A média aritmética de **{col}** é {val:.2f}.")
-            insights.append(f"O valor máximo registrado em **{col}** é {df[col].max()}.")
+            insights.append(f"O valor máximo de **{col}** é {df[col].max()}.")
         return " | ".join(insights)
 
-# ==========================================
-# MOTOR DE ANOMALIAS
-# ==========================================
 class AnomalyDetector:
     @staticmethod
     def find_anomalies(df, features):
@@ -123,9 +176,6 @@ class AnomalyDetector:
         model = IsolationForest(contamination=0.05, random_state=42)
         return model.fit_predict(data)
 
-# ==========================================
-# MOTOR DE DADOS (DUCKDB + POLARS + PYARROW/VAEX)
-# ==========================================
 class DataEngine:
     def __init__(self):
         self.con = duckdb.connect(database=':memory:')
@@ -139,61 +189,80 @@ class DataEngine:
             elif ext == 'parquet': df = pl.read_parquet(file_content)
             elif ext == 'json': df = pl.read_json(file_content)
             else: return None
-            
-            arrow_table = df.to_arrow() 
             _self.con.register('df_view', df.to_pandas())
             return df
         except Exception as e:
             st.error(f"Erro no processamento: {e}")
             return None
 
-    def query(self, sql):
-        return self.con.execute(sql).df()
-
-    def get_semantic_schema(self, df):
-        return {col: DataProfiler.identify_type(col, df[col]) for col in df.columns}
+    def query(self, sql): return self.con.execute(sql).df()
+    def get_semantic_schema(self, df): return {col: DataProfiler.identify_type(col, df[col]) for col in df.columns}
 
 # ==========================================
-# MOTOR DE VISUALIZAÇÃO (SUBSTITUÍDO - VOL 01)
+# MOTOR DE VISUALIZAÇÃO (ATUALIZADO - VOL 02)
 # ==========================================
 class GraphEngine:
     @staticmethod
-    def create_plot(df, plot_type, x, y, color=None):
+    def create_plot(df, plot_type, x, y, color=None, config=None):
         pdf = df.to_pandas()
         val_y = y if pd.api.types.is_numeric_dtype(pdf[y]) else None
         
-        if plot_type == "Linha": return px.line(pdf, x=x, y=y)
-        elif plot_type == "Barras": return px.bar(pdf, x=x, y=y, color=color)
-        elif plot_type == "Dispersão": return px.scatter(pdf, x=x, y=y, color=color)
-        elif plot_type == "Histograma": return px.histogram(pdf, x=x)
-        elif plot_type == "Treemap": return px.treemap(pdf, path=[x], values=val_y)
-        elif plot_type == "Sunburst": return px.sunburst(pdf, path=[x], values=val_y)
-        elif plot_type == "Area": return px.area(pdf, x=x, y=y)
-        elif plot_type == "Radar": return px.line_polar(pdf, r=y, theta=x, line_close=True) if val_y else px.bar(pdf, x=x, y=y, title="⚠️ O Radar requer Eixo Y numérico (Mostrando Barras)")
-        elif plot_type == "Polar": return px.scatter_polar(pdf, r=y, theta=x) if val_y else px.scatter(pdf, x=x, y=y, title="⚠️ O Polar requer Eixo Y numérico (Mostrando Dispersão)")
-        elif plot_type == "Funnel": return px.funnel(pdf, x=x, y=y)
-        elif plot_type == "Waterfall": return go.Figure(go.Waterfall(x=pdf[x], y=pdf[y]))
-        elif plot_type == "Violin": return px.violin(pdf, x=x, y=y)
-        elif plot_type == "Boxplot": return px.box(pdf, x=x, y=y)
-        elif plot_type == "Heatmap": return px.density_heatmap(pdf, x=x, y=y)
-        elif plot_type == "Density Map": return px.density_mapbox(pdf, lat=x, lon=y, radius=10, mapbox_style="carto-positron") if 'lat' in x.lower() else px.density_heatmap(pdf, x=x, y=y)
-        
-        return px.bar(pdf, x=x, y=y)
+        # Base Instantiation
+        if plot_type == "Linha": fig = px.line(pdf, x=x, y=y)
+        elif plot_type == "Barras": fig = px.bar(pdf, x=x, y=y, color=color)
+        elif plot_type == "Dispersão": fig = px.scatter(pdf, x=x, y=y, color=color)
+        elif plot_type == "Histograma": fig = px.histogram(pdf, x=x)
+        elif plot_type == "Treemap": fig = px.treemap(pdf, path=[x], values=val_y)
+        elif plot_type == "Sunburst": fig = px.sunburst(pdf, path=[x], values=val_y)
+        elif plot_type == "Area": fig = px.area(pdf, x=x, y=y)
+        elif plot_type == "Radar": fig = px.line_polar(pdf, r=y, theta=x, line_close=True) if val_y else px.bar(pdf, x=x, y=y, title="⚠️ Eixo Y inválido")
+        elif plot_type == "Polar": fig = px.scatter_polar(pdf, r=y, theta=x) if val_y else px.scatter(pdf, x=x, y=y, title="⚠️ Eixo Y inválido")
+        elif plot_type == "Funnel": fig = px.funnel(pdf, x=x, y=y)
+        elif plot_type == "Waterfall": fig = go.Figure(go.Waterfall(x=pdf[x], y=pdf[y]))
+        elif plot_type == "Violin": fig = px.violin(pdf, x=x, y=y)
+        elif plot_type == "Boxplot": fig = px.box(pdf, x=x, y=y)
+        elif plot_type == "Heatmap": fig = px.density_heatmap(pdf, x=x, y=y)
+        elif plot_type == "Density Map": fig = px.density_mapbox(pdf, lat=x, lon=y, radius=10, mapbox_style="carto-positron") if 'lat' in x.lower() else px.density_heatmap(pdf, x=x, y=y)
+        else: fig = px.bar(pdf, x=x, y=y)
+
+        # Propriedades Dinâmicas e Eixos (Volume 02)
+        if config and hasattr(fig, 'update_layout'):
+            # Layout Updates
+            fig.update_layout(
+                title=config.get('title', ''),
+                plot_bgcolor=config.get('plot_bgcolor', None),
+                paper_bgcolor=config.get('paper_bgcolor', None)
+            )
+            
+            # X Axis Formats
+            x_params = {}
+            if config.get('invert_x'): x_params['autorange'] = 'reversed'
+            if config.get('scale_x') == 'Log': x_params['type'] = 'log'
+            if x_params: fig.update_xaxes(**x_params)
+
+            # Y Axis Formats
+            y_params = {}
+            if config.get('invert_y'): y_params['autorange'] = 'reversed'
+            if config.get('scale_y') == 'Log': y_params['type'] = 'log'
+            fmt = config.get('format_y', 'Linear')
+            if fmt == 'Percentual': y_params['tickformat'] = '.0%'
+            elif fmt == 'Moeda': 
+                y_params['tickformat'] = ',.2f'
+                y_params['tickprefix'] = 'R$ '
+            elif fmt == 'Milhar': y_params['tickformat'] = '.2s'
+            elif fmt == 'Milhões': y_params['tickformat'] = '.2s' # Plotly handles SI scaling well with 's'
+            if y_params: fig.update_yaxes(**y_params)
+
+        return fig
 
     @staticmethod
     def create_altair_plot(df, x, y):
-        pdf = df.to_pandas()
-        if alt is not None:
-            return alt.Chart(pdf).mark_circle(size=60).encode(x=x, y=y, tooltip=[x, y]).interactive()
+        if alt is not None: return alt.Chart(df.to_pandas()).mark_circle(size=60).encode(x=x, y=y, tooltip=[x, y]).interactive()
         return None
 
     @staticmethod
     def get_echarts_options(x_data, y_data):
-        return {
-            "xAxis": {"type": "category", "data": x_data},
-            "yAxis": {"type": "value"},
-            "series": [{"data": y_data, "type": "line", "smooth": True}]
-        }
+        return {"xAxis": {"type": "category", "data": x_data}, "yAxis": {"type": "value"}, "series": [{"data": y_data, "type": "line", "smooth": True}]}
 
     @staticmethod
     def auto_plot(df, schema):
@@ -206,9 +275,6 @@ class GraphEngine:
         if cats and metrics: return px.bar(pdf, x=cats[0], y=metrics[0])
         return px.scatter(pdf, x=df.columns[0], y=df.columns[1])
 
-# ==========================================
-# MOTOR DE ML
-# ==========================================
 class MLProcessor:
     @staticmethod
     def run_kmeans(df, features, n_clusters):
@@ -219,39 +285,25 @@ class MLProcessor:
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         return kmeans.fit_predict(scaled_data)
 
-# ==========================================
-# TEMPLATES DE DASHBOARDS (VOLUME 01)
-# ==========================================
 class TemplateLibrary:
-    TEMPLATES = [
-        "Em Branco", "Dashboard Financeiro", "Dashboard Comercial", 
-        "Dashboard RH", "Dashboard Logístico", "Dashboard Educacional", "Dashboard Ambiental"
-    ]
+    TEMPLATES = ["Em Branco", "Dashboard Financeiro", "Dashboard Comercial", "Dashboard RH", "Dashboard Logístico", "Dashboard Educacional", "Dashboard Ambiental"]
 
-# ==========================================
-# UI E ESTILIZAÇÃO
-# ==========================================
 class UITheme:
     @staticmethod
     def apply_custom_css():
         st.markdown("""
         <style>
             .main { background-color: #f8f9fa; }
-            .kpi-card { background: white; padding: 15px; border-radius: 10px; border-left: 5px solid #007bff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center; }
-            .kpi-value { font-size: 20px; font-weight: bold; color: #2c3e50; }
-            .kpi-label { font-size: 12px; color: #7f8c8d; text-transform: uppercase; }
+            .kpi-card { background: white; padding: 15px; border-radius: 10px; border-left: 5px solid #007bff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+            .kpi-value { font-size: 24px; font-weight: bold; color: #2c3e50; }
+            .kpi-label { font-size: 12px; color: #7f8c8d; text-transform: uppercase; margin-bottom: 5px;}
             div[role="radiogroup"] { padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; }
         </style>
         """, unsafe_allow_html=True)
 
     @staticmethod
-    def render_kpi(label, value):
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-label">{label}</div>
-            <div class="kpi-value">{value}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    def render_kpi_html(label, value):
+        return f"""<div class="kpi-card"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div></div>"""
 
 # ==========================================
 # APLICAÇÃO PRINCIPAL
@@ -265,12 +317,27 @@ class DataVizApp:
         self.viz = GraphEngine()
         self.transformer = DataTransformer()
         self.templates = TemplateLibrary()
+        self.repo = ProjectRepository()
+        HistoryManager.init_state()
 
     def run(self):
         self.theme.apply_custom_css()
         with st.sidebar:
             st.title("📂 DataViz Pro V2.0")
             uploaded_file = st.file_uploader("Carregar dataset", type=["csv", "xlsx", "json", "parquet"])
+            st.divider()
+            st.subheader("Gerenciador de Projetos")
+            if st.button("Carregar Lista de Projetos"):
+                st.session_state['proj_df'] = self.repo.load_projects()
+            
+            if 'proj_df' in st.session_state and not st.session_state['proj_df'].empty:
+                st.dataframe(st.session_state['proj_df'], use_container_width=True)
+                pid_load = st.text_input("ID para Abrir:")
+                if st.button("Abrir Projeto"):
+                    loaded_state = self.repo.load_canvas_state(pid_load)
+                    if loaded_state:
+                        HistoryManager.push_state(loaded_state)
+                        st.success("Projeto carregado!")
         
         st.title("📊 Painel de Análise Profissional")
         if uploaded_file:
@@ -278,35 +345,16 @@ class DataVizApp:
             if df is not None:
                 schema = self.engine.get_semantic_schema(df)
                 
-                abas_lista = [
-                    "Dashboard", "Exploratória", "Estúdio Visual", "Transformação", 
-                    "Clusterização", "Anomalias", "Assistente IA", 
-                    "Smart Profiling", "PyGWalker", "Canvas Visual"
-                ]
+                abas_lista = ["Dashboard", "Exploratória", "Estúdio Visual", "Transformação", "Clusterização", "Anomalias", "Assistente IA", "Smart Profiling", "PyGWalker", "Canvas Visual"]
                 
-                # ==========================================
-                # CORREÇÃO CIRÚRGICA (Versão 1.11): Callback Limpo e Chaves Dinâmicas
-                # ==========================================
-                if 'aba_atual' not in st.session_state:
-                    st.session_state['aba_atual'] = "Dashboard"
-                if 'render_id' not in st.session_state:
-                    st.session_state['render_id'] = 0
+                if 'aba_atual' not in st.session_state: st.session_state['aba_atual'] = "Dashboard"
+                if 'render_id' not in st.session_state: st.session_state['render_id'] = 0
 
-                # Callback executa antes de montar a nova página (Zero colisão DOM)
                 def mudar_aba():
                     st.session_state['aba_atual'] = st.session_state['nav_radio']
                     st.session_state['render_id'] += 1
 
-                st.radio(
-                    "Navegação do Painel:", 
-                    abas_lista, 
-                    horizontal=True, 
-                    key="nav_radio",
-                    index=abas_lista.index(st.session_state['aba_atual']),
-                    on_change=mudar_aba,
-                    label_visibility="collapsed"
-                )
-                
+                st.radio("Navegação do Painel:", abas_lista, horizontal=True, key="nav_radio", index=abas_lista.index(st.session_state['aba_atual']), on_change=mudar_aba, label_visibility="collapsed")
                 aba_ativa = st.session_state['aba_atual']
                 render_id = st.session_state['render_id']
                 
@@ -318,8 +366,7 @@ class DataVizApp:
                     if cols:
                         cols_ui = st.columns(min(len(cols), 4))
                         for i, m in enumerate(cols[:4]):
-                            with cols_ui[i]: self.theme.render_kpi(m, f"{df[m].sum():,.0f}")
-                    # Remoção das chaves estáticas para evitar falha no desmonte do React
+                            with cols_ui[i]: st.markdown(self.theme.render_kpi_html(m, f"{df[m].sum():,.0f}"), unsafe_allow_html=True)
                     st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True)
 
                 elif aba_ativa == "Exploratória":
@@ -330,31 +377,33 @@ class DataVizApp:
                     st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True)
 
                 elif aba_ativa == "Estúdio Visual":
-                    st.subheader("Estúdio de Visualização Avançado")
+                    st.subheader("Estúdio de Visualização Avançado (Com Editor de Eixos e Propriedades)")
                     c1, c2, c3 = st.columns([1, 3, 1])
                     with c1:
-                        gx = st.selectbox("Eixo X (Estúdio)", list(df.columns), key="studio_x")
-                        gy = st.selectbox("Eixo Y (Estúdio)", list(df.columns), key="studio_y")
-                        gtype = st.selectbox("Tipo de Gráfico", [
-                            "Barras", "Linha", "Dispersão", "Histograma", "Treemap", "Sunburst",
-                            "Area", "Radar", "Polar", "Funnel", "Waterfall", "Violin", "Boxplot", "Heatmap", "Density Map",
-                            "Altair", "ECharts"
-                        ], key="studio_type")
-                    
+                        gx = st.selectbox("Eixo X", list(df.columns), key="studio_x")
+                        gy = st.selectbox("Eixo Y", list(df.columns), key="studio_y")
+                        gtype = st.selectbox("Tipo", ["Barras", "Linha", "Dispersão", "Histograma", "Treemap", "Sunburst", "Area", "Radar", "Polar", "Funnel", "Waterfall", "Violin", "Boxplot", "Heatmap", "Density Map", "Altair", "ECharts"], key="studio_type")
+                        
+                        st.divider()
+                        st.write("🔧 Editor de Propriedades Reais")
+                        layout_title = st.text_input("Título Gráfico", "Meu Gráfico")
+                        bg_color = st.color_picker("Cor Fundo (Plot)", "#FFFFFF")
+                        
+                        st.write("📏 Editor de Eixos")
+                        format_y = st.selectbox("Formato (Eixo Y)", ["Linear", "Percentual", "Moeda", "Milhar", "Milhões"])
+                        scale_y = st.selectbox("Escala (Eixo Y)", ["Linear", "Log"])
+                        inv_x = st.checkbox("Inverter Eixo X")
+                        inv_y = st.checkbox("Inverter Eixo Y")
+
                     with c2: 
-                        if gtype == "Altair":
-                            if alt is not None:
-                                st.altair_chart(self.viz.create_altair_plot(df, gx, gy), use_container_width=True)
-                            else:
-                                st.warning("A biblioteca 'altair' não está instalada.")
-                        elif gtype == "ECharts":
-                            if st_echarts is not None:
-                                pdf = df.to_pandas()
-                                st_echarts(options=self.viz.get_echarts_options(pdf[gx].tolist()[:50], pdf[gy].tolist()[:50]), height="400px")
-                            else:
-                                st.warning("A biblioteca 'streamlit_echarts' não está instalada.")
-                        else:
-                            st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy), use_container_width=True)
+                        config = {
+                            "title": layout_title, "plot_bgcolor": bg_color, "paper_bgcolor": "#f8f9fa",
+                            "format_y": format_y, "scale_y": scale_y, "invert_x": inv_x, "invert_y": inv_y
+                        }
+                        
+                        if gtype == "Altair" and alt is not None: st.altair_chart(self.viz.create_altair_plot(df, gx, gy), use_container_width=True)
+                        elif gtype == "ECharts" and st_echarts is not None: st_echarts(options=self.viz.get_echarts_options(df.to_pandas()[gx].tolist()[:50], df.to_pandas()[gy].tolist()[:50]), height="400px")
+                        else: st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy, config=config), use_container_width=True)
 
                 elif aba_ativa == "Transformação":
                     st.subheader("Engenharia de Dados")
@@ -390,47 +439,84 @@ class DataVizApp:
                 elif aba_ativa == "Smart Profiling":
                     st.subheader("Motor Inteligente: Profiling Automático")
                     if ydata_profiling is not None:
-                        with st.spinner("Analisando correlações, tendências e perfil dos dados..."):
-                            pdf = df.to_pandas()
-                            pr = pdf.profile_report()
-                            components.html(pr.to_html(), height=800, scrolling=True)
-                    else:
-                        st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Adicione ao requirements.txt.")
+                        with st.spinner("Analisando..."):
+                            components.html(df.to_pandas().profile_report().to_html(), height=800, scrolling=True)
+                    else: st.error("Instale 'ydata-profiling'.")
                             
                 elif aba_ativa == "PyGWalker":
                     st.subheader("Tableau-like Experience (PyGWalker)")
-                    st.write("Arraste colunas, medidas e dimensões para criar gráficos.")
-                    if pyg is not None:
-                        pdf = df.to_pandas()
-                        components.html(pyg.to_html(pdf), height=1000, scrolling=True)
-                    else:
-                        st.error("A biblioteca 'pygwalker' não está instalada no ambiente. Adicione ao requirements.txt.")
+                    if pyg is not None: components.html(pyg.to_html(df.to_pandas()), height=1000, scrolling=True)
+                    else: st.error("Instale 'pygwalker'.")
 
                 elif aba_ativa == "Canvas Visual":
-                    st.subheader("🎨 Canvas de Construção Visual")
-                    col_prop, col_canvas = st.columns([1, 4])
+                    st.subheader("🎨 Estúdio Canvas Pro")
                     
-                    with col_prop:
-                        st.write("**Editor de Propriedades**")
-                        st.selectbox("Template", self.templates.TEMPLATES)
-                        st.selectbox("Camada Ativa", ["Layer 1 (Gráfico)", "Layer 2 (Texto)", "Layer 3 (Imagem)", "Layer 4 (Legenda)", "Layer 5 (KPI)"])
-                        st.text_input("Título")
-                        st.text_input("Subtítulo")
-                        st.color_picker("Cor Principal", "#007bff")
-                        st.slider("Margem", 0, 50, 10)
-                        st.selectbox("Tema", ["Light", "Dark", "Custom"])
-                        st.button("Aplicar Propriedades")
-                        
+                    # Controles Superiores: Undo/Redo & Save
+                    top_c1, top_c2, top_c3, top_c4 = st.columns([1, 1, 2, 8])
+                    with top_c1: 
+                        if st.button("↩ Undo"): HistoryManager.undo(); st.rerun()
+                    with top_c2:
+                        if st.button("↪ Redo"): HistoryManager.redo(); st.rerun()
+                    with top_c3:
+                        if st.button("💾 Salvar Projeto"):
+                            pid = self.repo.save_canvas_state("Meu_Projeto_Canvas", st.session_state['canvas_objects'])
+                            st.success(f"Salvo! ID: {pid[:8]}")
+
+                    col_tools, col_canvas = st.columns([2, 8])
+                    
+                    with col_tools:
+                        st.write("**Ferramentas de Criação**")
+                        # Injeção dinâmica no session_state.canvas_objects
+                        if st.button("➕ Adicionar Gráfico", use_container_width=True):
+                            new_obj = {"id": str(uuid.uuid4()), "type": "chart", "x": 0, "y": 0, "w": 6, "h": 4, "config": {"type": "Barras", "x": df.columns[0], "y": df.columns[1] if len(df.columns)>1 else df.columns[0]}}
+                            current_objs = copy.deepcopy(st.session_state['canvas_objects'])
+                            current_objs.append(new_obj)
+                            HistoryManager.push_state(current_objs)
+                            st.rerun()
+                            
+                        if st.button("➕ Adicionar KPI", use_container_width=True):
+                            new_obj = {"id": str(uuid.uuid4()), "type": "kpi", "x": 0, "y": 0, "w": 3, "h": 2, "config": {"label": "Novo KPI", "val": "0"}}
+                            current_objs = copy.deepcopy(st.session_state['canvas_objects'])
+                            current_objs.append(new_obj)
+                            HistoryManager.push_state(current_objs)
+                            st.rerun()
+
+                        st.divider()
+                        st.write("**Elementos Ativos (Editor)**")
+                        for idx, obj in enumerate(st.session_state['canvas_objects']):
+                            with st.expander(f"{obj['type'].upper()} ({obj['id'][:5]})"):
+                                if obj['type'] == 'kpi':
+                                    new_lbl = st.text_input("Label", obj['config']['label'], key=f"lbl_{obj['id']}")
+                                    new_val = st.text_input("Valor", obj['config']['val'], key=f"val_{obj['id']}")
+                                    if new_lbl != obj['config']['label'] or new_val != obj['config']['val']:
+                                        mod_objs = copy.deepcopy(st.session_state['canvas_objects'])
+                                        mod_objs[idx]['config']['label'] = new_lbl
+                                        mod_objs[idx]['config']['val'] = new_val
+                                        HistoryManager.push_state(mod_objs)
+                                        st.rerun()
+                                elif obj['type'] == 'chart':
+                                    st.write("Propriedades ligadas ao painel de eixos...")
+
                     with col_canvas:
-                        st.write("Área de Arrastar e Soltar (Dashboard Elements)")
                         if elements is not None:
-                            # A injeção do render_id oblitera a chance do React misturar os domínios
-                            with elements(f"dashboard_canvas_id_{render_id}"):
-                                layout = [dashboard.Item("item1", 0, 0, 12, 6)]
-                                with dashboard.Grid(layout):
-                                    mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
+                            canvas_items = st.session_state['canvas_objects']
+                            if not canvas_items:
+                                st.info("O Canvas está vazio. Adicione elementos no painel lateral.")
+                            else:
+                                with elements(f"dashboard_canvas_id_{render_id}"):
+                                    # Mapeamento do array de estado para o Grid Layout dinâmico
+                                    layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
+                                    with dashboard.Grid(layout):
+                                        for obj in canvas_items:
+                                            with mui.Paper(key=obj["id"], elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column"}):
+                                                if obj["type"] == "kpi":
+                                                    # Integrando o HTML do Theme Builder no Elements via string dangerouslySetInnerHTML
+                                                    html_kpi = self.theme.render_kpi_html(obj["config"]["label"], obj["config"]["val"])
+                                                    html.div(dangerouslySetInnerHTML={"__html": html_kpi})
+                                                elif obj["type"] == "chart":
+                                                    mui.Typography("Gráfico Dinâmico Plotly (Requer integração complexa JS/Python para renderizar dentro do iframe do elements)", variant="caption")
                         else:
-                            st.error("O pacote 'streamlit-elements' não está instalado no ambiente. Adicione ao requirements.txt.")
+                            st.error("O pacote 'streamlit-elements' não está instalado.")
         else:
             st.info("Carregue um arquivo para iniciar.")
 
