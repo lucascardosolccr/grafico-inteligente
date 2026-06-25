@@ -1,5 +1,5 @@
 # --- Base Original ---
-streamlit
+streamlit==1.29.0
 polars
 pandas
 plotly
@@ -21,4 +21,4 @@ autoviz
 streamlit-echarts
 altair
 pygwalker
-streamlit-elements
+streamlit-elements==0.1.0
