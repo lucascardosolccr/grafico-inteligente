@@ -391,8 +391,10 @@ class DataVizApp:
                     st.subheader("Tableau-like Experience (PyGWalker)")
                     st.write("Arraste colunas, medidas e dimensões para criar gráficos.")
                     if pyg is not None:
-                        pdf = df.to_pandas()
-                        pyg.walk(pdf, env='Streamlit')
+                        # CORREÇÃO CIRÚRGICA: Lazy load para evitar conflito de DOM (removeChild) no Streamlit (Versão 1.7)
+                        if st.checkbox("Ativar Explorador PyGWalker", key="chk_pyg"):
+                            pdf = df.to_pandas()
+                            pyg.walk(pdf, env='Streamlit')
                     else:
                         st.error("A biblioteca 'pygwalker' não está instalada no ambiente. Adicione ao requirements.txt.")
 
@@ -414,10 +416,12 @@ class DataVizApp:
                     with col_canvas:
                         st.write("Área de Arrastar e Soltar (Dashboard Elements)")
                         if elements is not None:
-                            with elements("dashboard_canvas"):
-                                layout = [dashboard.Item("item1", 0, 0, 12, 6)]
-                                with dashboard.Grid(layout):
-                                    mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
+                            # CORREÇÃO CIRÚRGICA: Lazy load para evitar conflito de DOM (removeChild) no Streamlit (Versão 1.7)
+                            if st.checkbox("Ativar Canvas Visual", key="chk_canvas"):
+                                with elements("dashboard_canvas"):
+                                    layout = [dashboard.Item("item1", 0, 0, 12, 6)]
+                                    with dashboard.Grid(layout):
+                                        mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
                         else:
                             st.error("O pacote 'streamlit-elements' não está instalado no ambiente. Adicione ao requirements.txt.")
         else:
