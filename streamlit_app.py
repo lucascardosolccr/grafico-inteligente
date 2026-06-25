@@ -12,7 +12,13 @@ import numpy as np
 # NOVOS IMPORTS - VOLUME 01
 # ==========================================
 import pyarrow as pa
-import vaex
+
+# CORREÇÃO CIRÚRGICA: Tratamento de ausência do pacote vaex no ambiente (Versão 1.2)
+try:
+    import vaex
+except ImportError:
+    vaex = None
+
 import ydata_profiling
 from streamlit_pandas_profiling import st_profile_report
 import sweetviz as sv
