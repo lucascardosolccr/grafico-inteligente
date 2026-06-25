@@ -2,6 +2,7 @@ import streamlit as st
 import polars as pl
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import duckdb
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -174,10 +175,16 @@ class GraphEngine:
         
         # Plotly Novos (Volume 01)
         elif plot_type == "Area": return px.area(pdf, x=x, y=y)
-        elif plot_type == "Radar": return px.line_polar(pdf, r=y, theta=x, line_close=True) if val_y else px.line_polar(pdf, r=x, theta=x)
-        elif plot_type == "Polar": return px.scatter_polar(pdf, r=y, theta=x) if val_y else px.scatter_polar(pdf, r=x, theta=x)
+        
+        # CORREÇÃO CIRÚRGICA: Fallback gracioso para gráficos polares caso o eixo Y não seja numérico (Versão 1.6)
+        elif plot_type == "Radar": return px.line_polar(pdf, r=y, theta=x, line_close=True) if val_y else px.bar(pdf, x=x, y=y, title="⚠️ O Radar requer Eixo Y numérico (Mostrando Barras)")
+        elif plot_type == "Polar": return px.scatter_polar(pdf, r=y, theta=x) if val_y else px.scatter(pdf, x=x, y=y, title="⚠️ O Polar requer Eixo Y numérico (Mostrando Dispersão)")
+        
         elif plot_type == "Funnel": return px.funnel(pdf, x=x, y=y)
-        elif plot_type == "Waterfall": return px.waterfall(pdf, x=x, y=y)
+        
+        # CORREÇÃO CIRÚRGICA: Plotly Express não possui waterfall, exigindo graph_objects (Versão 1.5)
+        elif plot_type == "Waterfall": return go.Figure(go.Waterfall(x=pdf[x], y=pdf[y]))
+        
         elif plot_type == "Violin": return px.violin(pdf, x=x, y=y)
         elif plot_type == "Boxplot": return px.box(pdf, x=x, y=y)
         elif plot_type == "Heatmap": return px.density_heatmap(pdf, x=x, y=y)
@@ -380,8 +387,6 @@ class DataVizApp:
                         else:
                             st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Adicione ao requirements.txt.")
                             
-                        # Aqui integraria o SweetViz no futuro, validando se 'sv is not None'
-
                 with tabs[8]: # PYGWALKER
                     st.subheader("Tableau-like Experience (PyGWalker)")
                     st.write("Arraste colunas, medidas e dimensões para criar gráficos.")
