@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components # NOVO: Módulo para isolamento de DOM
+import streamlit.components.v1 as components 
 import polars as pl
 import pandas as pd
 import plotly.express as px
@@ -15,19 +15,19 @@ import numpy as np
 # ==========================================
 import pyarrow as pa
 
-# CORREÇÃO CIRÚRGICA: Tratamento de ausência do pacote vaex no ambiente (Versão 1.2)
+# Tratamento de ausência do pacote vaex no ambiente
 try:
     import vaex
 except ImportError:
     vaex = None
 
-# CORREÇÃO CIRÚRGICA: Tratamento de ausência do pacote ydata_profiling (Versão 1.3/1.9)
+# Tratamento de ausência do pacote ydata_profiling
 try:
     import ydata_profiling
 except ImportError:
     ydata_profiling = None
 
-# CORREÇÃO CIRÚRGICA: Tratamento de ausência de pacotes visuais no Streamlit Cloud (Versão 1.4)
+# Tratamento de ausência de pacotes visuais no Streamlit Cloud
 try:
     import sweetviz as sv
 except ImportError:
@@ -140,9 +140,7 @@ class DataEngine:
             elif ext == 'json': df = pl.read_json(file_content)
             else: return None
             
-            # Caching otimizado com PyArrow para datasets gigantes (Vol 01)
             arrow_table = df.to_arrow() 
-            
             _self.con.register('df_view', df.to_pandas())
             return df
         except Exception as e:
@@ -164,26 +162,17 @@ class GraphEngine:
         pdf = df.to_pandas()
         val_y = y if pd.api.types.is_numeric_dtype(pdf[y]) else None
         
-        # Plotly Base
         if plot_type == "Linha": return px.line(pdf, x=x, y=y)
         elif plot_type == "Barras": return px.bar(pdf, x=x, y=y, color=color)
         elif plot_type == "Dispersão": return px.scatter(pdf, x=x, y=y, color=color)
         elif plot_type == "Histograma": return px.histogram(pdf, x=x)
         elif plot_type == "Treemap": return px.treemap(pdf, path=[x], values=val_y)
         elif plot_type == "Sunburst": return px.sunburst(pdf, path=[x], values=val_y)
-        
-        # Plotly Novos (Volume 01)
         elif plot_type == "Area": return px.area(pdf, x=x, y=y)
-        
-        # CORREÇÃO CIRÚRGICA: Fallback gracioso para gráficos polares caso o eixo Y não seja numérico (Versão 1.6)
         elif plot_type == "Radar": return px.line_polar(pdf, r=y, theta=x, line_close=True) if val_y else px.bar(pdf, x=x, y=y, title="⚠️ O Radar requer Eixo Y numérico (Mostrando Barras)")
         elif plot_type == "Polar": return px.scatter_polar(pdf, r=y, theta=x) if val_y else px.scatter(pdf, x=x, y=y, title="⚠️ O Polar requer Eixo Y numérico (Mostrando Dispersão)")
-        
         elif plot_type == "Funnel": return px.funnel(pdf, x=x, y=y)
-        
-        # CORREÇÃO CIRÚRGICA: Plotly Express não possui waterfall, exigindo graph_objects (Versão 1.5)
         elif plot_type == "Waterfall": return go.Figure(go.Waterfall(x=pdf[x], y=pdf[y]))
-        
         elif plot_type == "Violin": return px.violin(pdf, x=x, y=y)
         elif plot_type == "Boxplot": return px.box(pdf, x=x, y=y)
         elif plot_type == "Heatmap": return px.density_heatmap(pdf, x=x, y=y)
@@ -251,8 +240,6 @@ class UITheme:
             .kpi-card { background: white; padding: 15px; border-radius: 10px; border-left: 5px solid #007bff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center; }
             .kpi-value { font-size: 20px; font-weight: bold; color: #2c3e50; }
             .kpi-label { font-size: 12px; color: #7f8c8d; text-transform: uppercase; }
-            
-            /* Melhoria visual para o Radio imitar as Tabs originais */
             div[role="radiogroup"] { padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; }
         </style>
         """, unsafe_allow_html=True)
@@ -297,17 +284,31 @@ class DataVizApp:
                     "Smart Profiling", "PyGWalker", "Canvas Visual"
                 ]
                 
-                # CORREÇÃO CIRÚRGICA (Versão 1.10): Hard Reset de DOM via Session State e Rerun
+                # ==========================================
+                # CORREÇÃO CIRÚRGICA (Versão 1.11): Callback Limpo e Chaves Dinâmicas
+                # ==========================================
                 if 'aba_atual' not in st.session_state:
                     st.session_state['aba_atual'] = "Dashboard"
-                
-                aba_selecionada = st.radio("Navegação do Painel:", abas_lista, horizontal=True, label_visibility="collapsed", index=abas_lista.index(st.session_state['aba_atual']))
-                
-                if aba_selecionada != st.session_state['aba_atual']:
-                    st.session_state['aba_atual'] = aba_selecionada
-                    st.rerun() # Interrompe o ciclo atual, desmontando o React antes de construir a nova tela
+                if 'render_id' not in st.session_state:
+                    st.session_state['render_id'] = 0
+
+                # Callback executa antes de montar a nova página (Zero colisão DOM)
+                def mudar_aba():
+                    st.session_state['aba_atual'] = st.session_state['nav_radio']
+                    st.session_state['render_id'] += 1
+
+                st.radio(
+                    "Navegação do Painel:", 
+                    abas_lista, 
+                    horizontal=True, 
+                    key="nav_radio",
+                    index=abas_lista.index(st.session_state['aba_atual']),
+                    on_change=mudar_aba,
+                    label_visibility="collapsed"
+                )
                 
                 aba_ativa = st.session_state['aba_atual']
+                render_id = st.session_state['render_id']
                 
                 if aba_ativa == "Dashboard":
                     st.subheader("Dashboard Executivo")
@@ -318,14 +319,15 @@ class DataVizApp:
                         cols_ui = st.columns(min(len(cols), 4))
                         for i, m in enumerate(cols[:4]):
                             with cols_ui[i]: self.theme.render_kpi(m, f"{df[m].sum():,.0f}")
-                    st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True, key="dash_chart")
+                    # Remoção das chaves estáticas para evitar falha no desmonte do React
+                    st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True)
 
                 elif aba_ativa == "Exploratória":
                     st.subheader("Configuração Manual de Gráficos")
                     c1, c2 = st.columns(2)
                     x = c1.selectbox("Eixo X (Manual)", list(df.columns), key="expl_x")
                     y = c2.selectbox("Eixo Y (Manual)", list(df.columns), key="expl_y")
-                    st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True, key="expl_chart")
+                    st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True)
 
                 elif aba_ativa == "Estúdio Visual":
                     st.subheader("Estúdio de Visualização Avançado")
@@ -352,7 +354,7 @@ class DataVizApp:
                             else:
                                 st.warning("A biblioteca 'streamlit_echarts' não está instalada.")
                         else:
-                            st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy), use_container_width=True, key="studio_chart")
+                            st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy), use_container_width=True)
 
                 elif aba_ativa == "Transformação":
                     st.subheader("Engenharia de Dados")
@@ -422,11 +424,11 @@ class DataVizApp:
                     with col_canvas:
                         st.write("Área de Arrastar e Soltar (Dashboard Elements)")
                         if elements is not None:
-                            if st.checkbox("Ativar Canvas Visual", key="chk_canvas"):
-                                with elements("dashboard_canvas"):
-                                    layout = [dashboard.Item("item1", 0, 0, 12, 6)]
-                                    with dashboard.Grid(layout):
-                                        mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
+                            # A injeção do render_id oblitera a chance do React misturar os domínios
+                            with elements(f"dashboard_canvas_id_{render_id}"):
+                                layout = [dashboard.Item("item1", 0, 0, 12, 6)]
+                                with dashboard.Grid(layout):
+                                    mui.Paper("Gráfico Principal (Arraste para redimensionar/mover)", key="item1", elevation=3, sx={"p": 2, "textAlign": "center"})
                         else:
                             st.error("O pacote 'streamlit-elements' não está instalado no ambiente. Adicione ao requirements.txt.")
         else:
