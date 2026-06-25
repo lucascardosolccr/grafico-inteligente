@@ -19,8 +19,14 @@ try:
 except ImportError:
     vaex = None
 
-import ydata_profiling
-from streamlit_pandas_profiling import st_profile_report
+# CORREÇÃO CIRÚRGICA: Tratamento de ausência do pacote ydata_profiling (Versão 1.3)
+try:
+    import ydata_profiling
+    from streamlit_pandas_profiling import st_profile_report
+except ImportError:
+    ydata_profiling = None
+    st_profile_report = None
+
 import sweetviz as sv
 from autoviz.AutoViz_Class import AutoViz_Class
 from streamlit_echarts import st_echarts
@@ -333,10 +339,13 @@ class DataVizApp:
                 with tabs[7]: # SMART PROFILING
                     st.subheader("Motor Inteligente: Profiling Automático")
                     if st.button("Gerar Perfil Completo (YData/SweetViz)"):
-                        with st.spinner("Analisando correlações, tendências e perfil dos dados..."):
-                            pdf = df.to_pandas()
-                            pr = pdf.profile_report()
-                            st_profile_report(pr)
+                        if ydata_profiling is not None and st_profile_report is not None:
+                            with st.spinner("Analisando correlações, tendências e perfil dos dados..."):
+                                pdf = df.to_pandas()
+                                pr = pdf.profile_report()
+                                st_profile_report(pr)
+                        else:
+                            st.error("A biblioteca 'ydata_profiling' não está instalada no ambiente. Por favor, adicione-a ao seu arquivo requirements.txt.")
 
                 with tabs[8]: # PYGWALKER
                     st.subheader("Tableau-like Experience (PyGWalker)")
