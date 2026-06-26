@@ -444,17 +444,29 @@ class DataVizApp:
                     else: st.error("Instale 'pygwalker'.")
 
                 elif aba_ativa == "Canvas Visual":
-                    st.subheader("🎨 Estúdio Canvas Pro")
-                    
-                    top_c1, top_c2, top_c3, top_c4 = st.columns([1, 1, 2, 8])
-                    with top_c1: 
-                        if st.button("↩ Undo"): HistoryManager.undo()
-                    with top_c2:
-                        if st.button("↪ Redo"): HistoryManager.redo()
-                    with top_c3:
-                        if st.button("💾 Salvar Projeto"):
-                            pid = self.repo.save_canvas_state("Meu_Projeto_Canvas", st.session_state['canvas_objects'])
-                            st.success(f"Salvo! ID: {pid[:8]}")
+                    # ... dentro do bloco "elif aba_ativa == "Canvas Visual":" ...
+
+with col_canvas:
+    if elements is not None:
+        canvas_items = st.session_state.get('canvas_objects', [])
+        if not canvas_items:
+            st.info("O Canvas está vazio.")
+        else:
+            # CORREÇÃO 1: Adicionar uma key única ao componente elements
+            # Isso força o React a entender que este container é único na re-renderização
+            with elements("dashboard_canvas", key="unique_canvas_key"): 
+                layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
+                with dashboard.Grid(layout):
+                    for obj in canvas_items:
+                        # CORREÇÃO 2: A key aqui DEVE ser o ID do objeto, não pode ser nula
+                        # Adicionamos uma key explícita para o React gerenciar o ciclo de vida do Paper
+                        with mui.Paper(key=obj["id"], elevation=3, sx={"p": 2}):
+                            if obj["type"] == "kpi":
+                                mui.Typography(f"{obj['config']['label']} - {obj['config']['val']}", variant="h6")
+                            elif obj["type"] == "chart":
+                                mui.Typography("Gráfico Dinâmico", variant="caption")
+    else:
+        st.error("Instale 'streamlit-elements'.")
 
                     col_tools, col_canvas = st.columns([2, 8])
                     
