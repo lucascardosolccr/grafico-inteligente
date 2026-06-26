@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components 
+import streamlit.components.v1 as components
 import polars as pl
 import pandas as pd
 import plotly.express as px
@@ -13,33 +13,23 @@ import sqlite3
 import json
 import uuid
 import copy
-
-# ==========================================
-# NOVOS IMPORTS - VOLUME 01
-# ==========================================
 import pyarrow as pa
+import io
 
 try: import vaex
 except ImportError: vaex = None
-
 try: import ydata_profiling
 except ImportError: ydata_profiling = None
-
 try: import sweetviz as sv
 except ImportError: sv = None
-
 try: from autoviz.AutoViz_Class import AutoViz_Class
 except ImportError: AutoViz_Class = None
-
 try: from streamlit_echarts import st_echarts
 except ImportError: st_echarts = None
-
 try: import altair as alt
 except ImportError: alt = None
-
 try: import pygwalker as pyg
 except ImportError: pyg = None
-
 try: from streamlit_elements import elements, mui, html, dashboard
 except ImportError: elements = mui = html = dashboard = None
 
@@ -53,8 +43,14 @@ st.set_page_config(page_title="DataViz Pro Engine", layout="wide", initial_sideb
 # ==========================================
 class ProjectRepository:
     def __init__(self):
-        self.conn = sqlite3.connect("projects.db", check_same_thread=False)
+        # CORREÇÃO: Uso de singleton (cache_resource) para evitar database lock
+        self.conn = self._get_connection()
         self._init_schema()
+
+    @staticmethod
+    @st.cache_resource
+    def _get_connection():
+        return sqlite3.connect("projects.db", check_same_thread=False)
 
     def _init_schema(self):
         cursor = self.conn.cursor()
@@ -163,12 +159,14 @@ class InsightEngine:
             val = df[col].mean()
             insights.append(f"A média aritmética de **{col}** é {val:.2f}.")
             insights.append(f"O valor máximo de **{col}** é {df[col].max()}.")
-        return " | ".join(insights)
+        return " | ".join(insights) if insights else "Nenhuma métrica encontrada para resumo."
 
 class AnomalyDetector:
     @staticmethod
     def find_anomalies(df, features):
+        if not features: return [] # CORREÇÃO: Proteção contra lista vazia
         data = df.select(features).to_pandas().fillna(0).select_dtypes(include=[np.number])
+        if data.empty: return []
         model = IsolationForest(contamination=0.05, random_state=42)
         return model.fit_predict(data)
 
@@ -176,23 +174,36 @@ class DataEngine:
     def __init__(self):
         self.con = duckdb.connect(database=':memory:')
 
+    # CORREÇÃO: Função pura fora da classe para caching correto dos bytes do arquivo
+    @staticmethod
     @st.cache_data
-    def load_data(_self, file_content, filename):
+    def _read_file(file_bytes, filename):
         try:
             ext = filename.split('.')[-1].lower()
-            if ext == 'csv': df = pl.read_csv(file_content)
-            elif ext in ['xlsx', 'xls']: df = pl.from_pandas(pd.read_excel(file_content))
-            elif ext == 'parquet': df = pl.read_parquet(file_content)
-            elif ext == 'json': df = pl.read_json(file_content)
-            else: return None
-            _self.con.register('df_view', df.to_pandas())
-            return df
+            if ext == 'csv': return pl.read_csv(io.BytesIO(file_bytes))
+            elif ext in ['xlsx', 'xls']: return pl.from_pandas(pd.read_excel(io.BytesIO(file_bytes)))
+            elif ext == 'parquet': return pl.read_parquet(io.BytesIO(file_bytes))
+            elif ext == 'json': return pl.read_json(io.BytesIO(file_bytes))
+            return None
         except Exception as e:
-            st.error(f"Erro no processamento: {e}")
             return None
 
-    def query(self, sql): return self.con.execute(sql).df()
-    def get_semantic_schema(self, df): return {col: DataProfiler.identify_type(col, df[col]) for col in df.columns}
+    def load_data(self, file_bytes, filename):
+        df = self._read_file(file_bytes, filename)
+        if df is not None:
+            # CORREÇÃO: Registro no DuckDB ocorre fora do cache, logo funciona em todos os reruns
+            self.con.register('df_view', df.to_pandas())
+        return df
+
+    def query(self, sql): 
+        try:
+            return self.con.execute(sql).df()
+        except Exception as e:
+            st.error(f"Erro na consulta SQL: {e}")
+            return pd.DataFrame()
+            
+    def get_semantic_schema(self, df): 
+        return {col: DataProfiler.identify_type(col, df[col]) for col in df.columns}
 
 class GraphEngine:
     @staticmethod
@@ -260,6 +271,7 @@ class GraphEngine:
 class MLProcessor:
     @staticmethod
     def run_kmeans(df, features, n_clusters):
+        if not features: return None # CORREÇÃO: Proteção contra lista vazia
         data = df.select(features).to_pandas().select_dtypes(include=[np.number]).dropna()
         if data.empty: return None
         scaler = StandardScaler()
@@ -325,13 +337,15 @@ class DataVizApp:
         
         st.title("📊 Painel de Análise Profissional")
         if uploaded_file:
-            df = self.engine.load_data(uploaded_file, uploaded_file.name)
+            # CORREÇÃO: Passando os bytes estáticos para resolver o problema de cache e leitura
+            file_bytes = uploaded_file.getvalue()
+            df = self.engine.load_data(file_bytes, uploaded_file.name)
+            
             if df is not None:
                 schema = self.engine.get_semantic_schema(df)
                 
                 abas_lista = ["Dashboard", "Exploratória", "Estúdio Visual", "Transformação", "Clusterização", "Anomalias", "Assistente IA", "Smart Profiling", "PyGWalker", "Canvas Visual"]
                 
-                # CORREÇÃO CIRÚRGICA 2.5: Simplificação total do Radio para evitar race conditions no React
                 aba_ativa = st.radio("Navegação do Painel:", abas_lista, horizontal=True, label_visibility="collapsed")
                 
                 if aba_ativa == "Dashboard":
@@ -343,7 +357,6 @@ class DataVizApp:
                         cols_ui = st.columns(min(len(cols), 4))
                         for i, m in enumerate(cols[:4]):
                             with cols_ui[i]: st.markdown(self.theme.render_kpi_html(m, f"{df[m].sum():,.0f}"), unsafe_allow_html=True)
-                    # CORREÇÃO CIRÚRGICA 2.5: Injeção de chave manual no Plotly
                     st.plotly_chart(self.viz.auto_plot(df, schema), use_container_width=True, key="plot_dash")
 
                 elif aba_ativa == "Exploratória":
@@ -351,7 +364,6 @@ class DataVizApp:
                     c1, c2 = st.columns(2)
                     x = c1.selectbox("Eixo X (Manual)", list(df.columns), key="expl_x")
                     y = c2.selectbox("Eixo Y (Manual)", list(df.columns), key="expl_y")
-                    # CORREÇÃO CIRÚRGICA 2.5: Injeção de chave manual no Plotly
                     st.plotly_chart(self.viz.create_plot(df, "Barras", x, y), use_container_width=True, key="plot_expl")
 
                 elif aba_ativa == "Estúdio Visual":
@@ -382,7 +394,6 @@ class DataVizApp:
                         if gtype == "Altair" and alt is not None: st.altair_chart(self.viz.create_altair_plot(df, gx, gy), use_container_width=True)
                         elif gtype == "ECharts" and st_echarts is not None: st_echarts(options=self.viz.get_echarts_options(df.to_pandas()[gx].tolist()[:50], df.to_pandas()[gy].tolist()[:50]), height="400px")
                         else: 
-                            # CORREÇÃO CIRÚRGICA 2.5: Injeção de chave manual no Plotly
                             st.plotly_chart(self.viz.create_plot(df, gtype, gx, gy, config=config), use_container_width=True, key="plot_estudio")
 
                 elif aba_ativa == "Transformação":
@@ -393,28 +404,32 @@ class DataVizApp:
 
                 elif aba_ativa == "Clusterização":
                     num_cols = [c for c, t in schema.items() if t == "Métrica"]
-                    sel = st.multiselect("Features", num_cols, default=num_cols[:2], key="ml_sel")
+                    sel = st.multiselect("Features", num_cols, default=num_cols[:2] if len(num_cols) >= 2 else num_cols, key="ml_sel")
                     k = st.slider("Clusters", 2, 6, 3, key="ml_k")
                     if st.button("Executar Clusterização", key="ml_btn"):
                         res = self.ml.run_kmeans(df, sel, k)
-                        if res is not None: st.write("Clusterização finalizada.")
+                        if res is not None: st.success("Clusterização finalizada.")
+                        else: st.warning("Selecione características válidas para clusterizar.")
 
                 elif aba_ativa == "Anomalias":
                     st.subheader("Detecção de Anomalias")
                     num_cols = [c for c, t in schema.items() if t == "Métrica"]
-                    sel = st.multiselect("Features Anomalia", num_cols, default=num_cols[:2], key="ano_sel")
+                    sel = st.multiselect("Features Anomalia", num_cols, default=num_cols[:2] if len(num_cols) >= 2 else num_cols, key="ano_sel")
                     if st.button("Rodar Detecção", key="ano_btn"):
                         preds = AnomalyDetector.find_anomalies(df, sel)
-                        pdf = df.to_pandas()
-                        pdf['Status'] = ["Anômalo" if p == -1 else "Normal" for p in preds]
-                        st.dataframe(pdf[pdf['Status'] == "Anômalo"])
+                        if len(preds) > 0:
+                            pdf = df.to_pandas()
+                            pdf['Status'] = ["Anômalo" if p == -1 else "Normal" for p in preds]
+                            st.dataframe(pdf[pdf['Status'] == "Anômalo"])
+                        else:
+                            st.warning("Selecione características para rodar a detecção.")
 
                 elif aba_ativa == "Assistente IA":
-                    query = st.text_input("Consulta SQL:", key="sql_input")
+                    query = st.text_input("Consulta SQL:", key="sql_input", help="Consulta na tabela virtual 'df_view'.")
                     if query: st.dataframe(self.engine.query(query))
                     if prompt := st.chat_input("Pergunte algo...", key="ai_chat"):
                         st.chat_message("user").markdown(prompt)
-                        st.chat_message("assistant").markdown("Motor de IA ativo.")
+                        st.chat_message("assistant").markdown("Motor de IA ativo. (Integração LLM pendente)")
 
                 elif aba_ativa == "Smart Profiling":
                     st.subheader("Motor Inteligente: Profiling Automático")
@@ -429,7 +444,6 @@ class DataVizApp:
                     else: st.error("Instale 'pygwalker'.")
 
                 elif aba_ativa == "Canvas Visual":
-                    # CORREÇÃO CIRÚRGICA 2.5: Reativação do Canvas limpo e estável
                     st.subheader("🎨 Estúdio Canvas Pro")
                     
                     top_c1, top_c2, top_c3, top_c4 = st.columns([1, 1, 2, 8])
@@ -448,19 +462,19 @@ class DataVizApp:
                         st.write("**Ferramentas**")
                         if st.button("➕ Adicionar Gráfico", use_container_width=True):
                             new_obj = {"id": str(uuid.uuid4()), "type": "chart", "x": 0, "y": 0, "w": 6, "h": 4, "config": {"type": "Barras", "x": df.columns[0], "y": df.columns[1] if len(df.columns)>1 else df.columns[0]}}
-                            current_objs = copy.deepcopy(st.session_state['canvas_objects'])
+                            current_objs = copy.deepcopy(st.session_state.get('canvas_objects', []))
                             current_objs.append(new_obj)
                             HistoryManager.push_state(current_objs)
                             
                         if st.button("➕ Adicionar KPI", use_container_width=True):
                             new_obj = {"id": str(uuid.uuid4()), "type": "kpi", "x": 0, "y": 0, "w": 3, "h": 2, "config": {"label": "Novo KPI", "val": "0"}}
-                            current_objs = copy.deepcopy(st.session_state['canvas_objects'])
+                            current_objs = copy.deepcopy(st.session_state.get('canvas_objects', []))
                             current_objs.append(new_obj)
                             HistoryManager.push_state(current_objs)
 
                     with col_canvas:
                         if elements is not None:
-                            canvas_items = st.session_state['canvas_objects']
+                            canvas_items = st.session_state.get('canvas_objects', [])
                             if not canvas_items:
                                 st.info("O Canvas está vazio. Adicione elementos no painel lateral.")
                             else:
@@ -469,7 +483,7 @@ class DataVizApp:
                                         layout = [dashboard.Item(obj["id"], obj["x"], obj["y"], obj["w"], obj["h"]) for obj in canvas_items]
                                         with dashboard.Grid(layout):
                                             for obj in canvas_items:
-                                                with mui.Paper(elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column", "justifyContent": "center"}):
+                                                with mui.Paper(key=obj["id"], elevation=3, sx={"p": 2, "display": "flex", "flexDirection": "column", "justifyContent": "center"}):
                                                     if obj["type"] == "kpi":
                                                         mui.Typography(f"{obj['config']['label']} - {obj['config']['val']}", variant="h6", sx={"fontWeight": "bold", "color": "#2c3e50", "textAlign": "center"})
                                                     elif obj["type"] == "chart":
